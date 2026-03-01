@@ -1,24 +1,19 @@
-# Nuxt dev/build outputs
-.output
-.data
-.nuxt
-.nitro
-.cache
-dist
+# Dependencies
+node_modules/
 
-# Node dependencies
-node_modules
+# Nuxt
+.nuxt/
+.output/
+dist/
 
-# Logs
-logs
-*.log
-
-# Misc
-.DS_Store
-.fleet
-.idea
-
-# Local env files
+# Environment
 .env
-.env.*
-!.env.example
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
