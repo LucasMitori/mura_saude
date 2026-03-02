@@ -1129,13 +1129,13 @@ function loadWidgetConfig() {
     }
 }
 
-// ===== Data Loading =====
 async function loadAllData() {
     loading.value = true;
     try {
         const from = format(subDays(new Date(), 60), "yyyy-MM-dd");
         const records = await $fetch<DailyRecord[]>("/api/daily", {
             query: { from },
+            headers: authStore.authHeaders,
         });
         allRecords.value = Array.isArray(records) ? records : [];
     } catch {
@@ -1144,7 +1144,6 @@ async function loadAllData() {
         loading.value = false;
     }
 }
-
 // ===== Today's Data =====
 const todayRecord = computed(() =>
     allRecords.value.find((r) => r.date === today),

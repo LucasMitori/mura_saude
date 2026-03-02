@@ -768,12 +768,74 @@
                 </v-tabs-window-item>
 
                 <!-- ===== WATER TAB ===== -->
+                <!-- ===== WATER TAB ===== -->
                 <v-tabs-window-item value="water">
                     <v-card-text>
-                        <WaterTracker
-                            :water="waterData"
-                            @update="updateWaterIntake"
-                        />
+                        <div class="text-center mb-4">
+                            <p class="text-h3 font-weight-bold">
+                                {{ form.waterIntake }} / {{ form.waterGoal }}
+                                {{ form.waterGoalUnit }}
+                            </p>
+                            <v-progress-linear
+                                :model-value="waterPercentage"
+                                color="blue"
+                                height="20"
+                                rounded
+                                class="mt-2"
+                                style="max-width: 400px; margin: 0 auto"
+                            >
+                                <template #default>
+                                    <strong>{{ waterPercentage }}%</strong>
+                                </template>
+                            </v-progress-linear>
+                        </div>
+
+                        <v-row justify="center" class="mb-4">
+                            <v-col
+                                v-for="amount in quickWaterAmounts"
+                                :key="amount"
+                                cols="auto"
+                            >
+                                <v-btn
+                                    color="blue"
+                                    variant="outlined"
+                                    @click="addWater(amount)"
+                                >
+                                    +{{ amount }}{{ form.waterGoalUnit }}
+                                </v-btn>
+                            </v-col>
+                        </v-row>
+
+                        <v-row justify="center">
+                            <v-col cols="4">
+                                <v-text-field
+                                    v-model.number="customWaterAmount"
+                                    label="Quantidade personalizada"
+                                    type="number"
+                                    step="0.1"
+                                    variant="outlined"
+                                    density="compact"
+                                    hide-details
+                                />
+                            </v-col>
+                            <v-col cols="auto" class="d-flex align-center">
+                                <v-btn
+                                    color="blue"
+                                    @click="addWater(customWaterAmount)"
+                                >
+                                    Adicionar
+                                </v-btn>
+                            </v-col>
+                            <v-col cols="auto" class="d-flex align-center">
+                                <v-btn
+                                    color="error"
+                                    variant="text"
+                                    @click="form.waterIntake = 0"
+                                >
+                                    Zerar
+                                </v-btn>
+                            </v-col>
+                        </v-row>
                     </v-card-text>
                 </v-tabs-window-item>
             </v-tabs-window>
@@ -1680,6 +1742,18 @@ function addFoodToMeal(mealIndex: number) {
     meal.foods.push(newFood);
 }
 
+// ===== Water =====
+const customWaterAmount = ref(0.5);
+
+const quickWaterAmounts = computed(() => {
+    return form.value.waterGoalUnit === "l" ? [0.25, 0.5, 1] : [250, 500, 1000];
+});
+
+function addWater(amount: number) {
+    form.value.waterIntake =
+        Math.round((form.value.waterIntake + amount) * 100) / 100;
+}
+
 function removeFood(mealIndex: number, foodIndex: number) {
     const meal = form.value.meals[mealIndex];
     if (!meal) return;
@@ -1803,9 +1877,11 @@ function updateWaterIntake(data: { consumed: number }) {
 
 const waterPercentage = computed(() => {
     if (form.value.waterGoal <= 0) return 0;
-    return Math.round((form.value.waterIntake / form.value.waterGoal) * 100);
+    return Math.min(
+        Math.round((form.value.waterIntake / form.value.waterGoal) * 100),
+        100,
+    );
 });
-
 // ===== Summary =====
 const morningWeight = computed(() => {
     const morning = form.value.bodyMeasurements.find(
