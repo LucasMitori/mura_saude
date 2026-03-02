@@ -9,13 +9,41 @@ export async function getDatabase(): Promise<Db> {
     const config = useRuntimeConfig();
     const uri = config.mongodbUri;
 
-    if (!uri) throw new Error("MONGODB_URI is not configured");
+    if (!uri) {
+        throw createError({
+            statusCode: 500,
+            message: "MONGODB_URI is not configured",
+        });
+    }
 
-    const client = new MongoClient(uri);
-    await client.connect();
+    try {
+        const client = new MongoClient(uri, {
+            tls: true,
+            tlsAllowInvalidCertificates: false,
+            serverSelectionTimeoutMS: 5000,
+            connectTimeoutMS: 10000,
+            retryWrites: true,
+            retryReads: true,
+        });
 
-    cachedClient = client;
-    cachedDb = client.db("mura_saude");
+        await client.connect();
 
-    return cachedDb;
+        cachedClient = client;
+        cachedDb = client.db("mura_saude");
+
+        return cachedDb;
+    } catch (error: unknown) {
+        // Reset cache on failure so next request tries again
+        cachedClient = null;
+        cachedDb = null;
+
+        const message =
+            error instanceof Error ? error.message : "Unknown database error";
+        console.error("[MongoDB] Connection failed:", message);
+
+        throw createError({
+            statusCode: 500,
+            message: `Database connection failed: ${message}`,
+        });
+    }
 }

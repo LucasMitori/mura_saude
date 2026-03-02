@@ -1,5 +1,9 @@
 {
     "name": "mura_saude",
+    "packageManager": "pnpm@10.29.3",
+    "engines": {
+        "node": "20.x"
+    },
     "type": "module",
     "private": true,
     "scripts": {
