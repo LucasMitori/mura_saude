@@ -17,15 +17,7 @@ export async function getDatabase(): Promise<Db> {
     }
 
     try {
-        const client = new MongoClient(uri, {
-            tls: true,
-            tlsAllowInvalidCertificates: false,
-            serverSelectionTimeoutMS: 5000,
-            connectTimeoutMS: 10000,
-            retryWrites: true,
-            retryReads: true,
-        });
-
+        const client = new MongoClient(uri);
         await client.connect();
 
         cachedClient = client;
@@ -33,7 +25,6 @@ export async function getDatabase(): Promise<Db> {
 
         return cachedDb;
     } catch (error: unknown) {
-        // Reset cache on failure so next request tries again
         cachedClient = null;
         cachedDb = null;
 
