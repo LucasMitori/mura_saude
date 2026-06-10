@@ -1,8 +1,21 @@
-import jwt from "jsonwebtoken";
+import jwt, { type SignOptions } from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import type { H3Event } from "h3";
 
 const SALT_ROUNDS = 12;
+const TOKEN_TTL: SignOptions["expiresIn"] = "7d";
+
+function requireJwtSecret(): string {
+    const config = useRuntimeConfig();
+    const secret = config.jwtSecret;
+    if (!secret || typeof secret !== "string" || secret.length < 32) {
+        throw createError({
+            statusCode: 500,
+            message: "Server misconfigured: JWT_SECRET is missing or too weak",
+        });
+    }
+    return secret;
+}
 
 export async function hashPassword(password: string): Promise<string> {
     return bcrypt.hash(password, SALT_ROUNDS);
@@ -15,25 +28,24 @@ export async function verifyPassword(
     return bcrypt.compare(password, hash);
 }
 
-export function generateToken(userId: string, email: string): string {
-    const config = useRuntimeConfig();
-    return jwt.sign({ userId, email }, config.jwtSecret, {
-        expiresIn: "7d",
+export function generateToken(userId: string, email: string, role: string): string {
+    return jwt.sign({ userId, email, role }, requireJwtSecret(), {
+        expiresIn: TOKEN_TTL,
+        issuer: "mura-saude",
     });
 }
 
-export function verifyToken(token: string): { userId: string; email: string } {
-    const config = useRuntimeConfig();
-    return jwt.verify(token, config.jwtSecret) as {
-        userId: string;
-        email: string;
-    };
-}
-
-export function getAuthUser(event: H3Event): {
+export interface AuthPayload {
     userId: string;
     email: string;
-} {
+    role?: string;
+}
+
+export function verifyToken(token: string): AuthPayload {
+    return jwt.verify(token, requireJwtSecret(), { issuer: "mura-saude" }) as AuthPayload;
+}
+
+export function getAuthUser(event: H3Event): AuthPayload {
     const authHeader = getHeader(event, "authorization");
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -43,7 +55,10 @@ export function getAuthUser(event: H3Event): {
         });
     }
 
-    const token = authHeader.substring(7);
+    const token = authHeader.substring(7).trim();
+    if (!token) {
+        throw createError({ statusCode: 401, message: "Authentication required" });
+    }
 
     try {
         return verifyToken(token);

@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import type { UserProfile, AuthResponse } from "~~/shared/types/auth";
+import type { UserProfile, AuthResponse, ProfileUpdate, Permission } from "~~/shared/types/auth";
 
 export const useAuthStore = defineStore("auth", {
     state: () => ({
@@ -12,6 +12,15 @@ export const useAuthStore = defineStore("auth", {
     getters: {
         isAuthenticated: (state) => !!state.token,
         isAdmin: (state) => state.user?.role === "admin",
+        isManager: (state) => state.user?.role === "manager",
+        specialty: (state) => state.user?.specialty ?? null,
+        permissions: (state): Permission[] => state.user?.permissions ?? [],
+        // NOTE: this is convenience/UX only. Hiding a button or link here does NOT
+        // secure anything — every action is independently enforced server-side.
+        can:
+            (state) =>
+            (perm: Permission): boolean =>
+                !!state.user?.permissions?.includes(perm),
         authHeaders: (state) => ({
             Authorization: state.token ? `Bearer ${state.token}` : "",
         }),
@@ -66,6 +75,26 @@ export const useAuthStore = defineStore("auth", {
                 this.persistAuth();
             } catch {
                 this.logout();
+            }
+        },
+
+        async updateProfile(update: ProfileUpdate) {
+            this.loading = true;
+            this.error = null;
+            try {
+                const user = await $fetch<UserProfile>("/api/auth/me", {
+                    method: "PUT",
+                    body: update,
+                    headers: this.authHeaders,
+                });
+                this.user = user;
+                this.persistAuth();
+                return user;
+            } catch (e: unknown) {
+                this.error = this.extractError(e);
+                throw e;
+            } finally {
+                this.loading = false;
             }
         },
 

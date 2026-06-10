@@ -1,59 +1,72 @@
-import { getDatabase } from "#server/utils/mongodb";
-import { requireAdmin } from "#server/utils/roles";
-import { validateRequired, validateMealType } from "#server/utils/validators";
+import { requirePermission, getDataOwnerId } from "#server/utils/roles";
+import {
+    validateRequired,
+    validateDate,
+    validateMealType,
+    sanitizeMongoInput,
+} from "#server/utils/validators";
+import {
+    getOrCreateDailyRecord,
+    persistDailyRecord,
+    recomputeMealTotals,
+    recomputeDailySummary,
+    generateSubId,
+    type MealLite,
+} from "#server/utils/daily-helpers";
 
 interface AddMealBody {
     date: string;
-    meal: {
-        type: string;
-        name: string;
-        ingredients: Array<{
-            name: string;
-            grams: number;
-            calories: number;
-            protein?: number;
-            carbs?: number;
-            fats?: number;
-        }>;
-    };
+    meal: Partial<MealLite>;
 }
 
 export default defineEventHandler(async (event) => {
-    const { userId } = await requireAdmin(event);
+    const ctx = await requirePermission(event, "nutrition.edit");
+    const userId = await getDataOwnerId(ctx);
 
-    const body = await readBody<AddMealBody>(event);
+    const rawBody = await readBody<AddMealBody>(event);
+    const body = sanitizeMongoInput(rawBody);
     const { date, meal } = body;
 
     validateRequired(date, "date");
+    validateDate(date);
     validateRequired(meal, "meal");
-    validateRequired(meal.type, "meal.type");
-    validateRequired(meal.name, "meal.name");
 
     if (!validateMealType(meal.type)) {
         throw createError({ statusCode: 400, message: "Invalid meal type" });
     }
 
-    if (!Array.isArray(meal.ingredients) || meal.ingredients.length === 0) {
+    if (!Array.isArray(meal.foods)) {
         throw createError({
             statusCode: 400,
-            message: "Meal must have at least one ingredient",
+            message: "Meal must include a foods array",
         });
     }
 
-    const db = await getDatabase();
-    const collection = db.collection("dailyRecords");
+    const rec = await getOrCreateDailyRecord(userId, date);
 
-    const result = await collection.updateOne({ userId, date }, {
-        $push: { meals: meal as unknown } as Record<string, unknown>,
-        $set: { updatedAt: new Date() },
-    } as any);
+    const newMeal: MealLite = {
+        id: generateSubId(),
+        type: meal.type,
+        label: (meal.label as string) || "",
+        time: (meal.time as string) || "",
+        notes: (meal.notes as string) || "",
+        foods: meal.foods.map((f) => ({
+            name: String(f?.name || ""),
+            weightGrams: Number(f?.weightGrams) || 0,
+            calories: Number(f?.calories) || 0,
+            protein: f?.protein != null ? Number(f.protein) : undefined,
+            carbs: f?.carbs != null ? Number(f.carbs) : undefined,
+            fats: f?.fats != null ? Number(f.fats) : undefined,
+            fiber: f?.fiber != null ? Number(f.fiber) : undefined,
+        })),
+        totalCalories: 0,
+        totalWeight: 0,
+    };
+    recomputeMealTotals(newMeal);
 
-    if (result.matchedCount === 0) {
-        throw createError({
-            statusCode: 404,
-            message: "Daily record not found. Create it first.",
-        });
-    }
+    rec.meals.push(newMeal);
+    recomputeDailySummary(rec);
+    await persistDailyRecord(rec);
 
-    return { success: true };
+    return { success: true, mealId: newMeal.id };
 });

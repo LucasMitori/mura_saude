@@ -1,23 +1,23 @@
 import { getDatabase } from "#server/utils/mongodb";
 import { getAuthUser } from "#server/utils/auth";
+import { getAdminUserId } from "#server/utils/roles";
+import { safeDateQueryParam } from "#server/utils/validators";
 
 export default defineEventHandler(async (event) => {
-    const { userId } = getAuthUser(event);
+    const auth = getAuthUser(event);
 
     const query = getQuery(event);
-    const { date, from, to } = query as {
-        date?: string;
-        from?: string;
-        to?: string;
-    };
+    const date = safeDateQueryParam(query.date);
+    const from = safeDateQueryParam(query.from);
+    const to = safeDateQueryParam(query.to);
+    const limitRaw = typeof query.limit === "string" ? parseInt(query.limit, 10) : 60;
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(1, limitRaw), 365) : 60;
 
     const db = await getDatabase();
     const collection = db.collection("dailyRecords");
 
-    // For viewers, show admin's data (since only admin creates entries)
-    // Find admin user ID
-    const adminUser = await db.collection("users").findOne({ role: "admin" });
-    const targetUserId = adminUser ? adminUser._id.toString() : userId;
+    const adminUserId = await getAdminUserId();
+    const targetUserId = adminUserId || auth.userId;
 
     if (date) {
         const record = await collection.findOne({ userId: targetUserId, date });
@@ -29,15 +29,16 @@ export default defineEventHandler(async (event) => {
 
     const filter: Record<string, unknown> = { userId: targetUserId };
     if (from || to) {
-        filter.date = {};
-        if (from) (filter.date as Record<string, string>).$gte = from;
-        if (to) (filter.date as Record<string, string>).$lte = to;
+        const range: Record<string, string> = {};
+        if (from) range.$gte = from;
+        if (to) range.$lte = to;
+        filter.date = range;
     }
 
     const records = await collection
         .find(filter)
         .sort({ date: -1 })
-        .limit(60)
+        .limit(limit)
         .toArray();
 
     return records.map((r) => ({ ...r, _id: r._id.toString() }));

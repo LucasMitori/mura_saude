@@ -1,76 +1,86 @@
-import { getDatabase } from "#server/utils/mongodb";
-import { requireAdmin } from "#server/utils/roles";
-import { validateRequired, validateDate } from "#server/utils/validators";
+import { requirePermission, getDataOwnerId } from "#server/utils/roles";
+import { validateRequired, validateDate, sanitizeMongoInput } from "#server/utils/validators";
+import {
+    ensureDailyRecordsIndexes,
+    emptyDailyRecord,
+    persistDailyRecord,
+    recomputeMealTotals,
+    recomputeWorkoutTotals,
+    recomputeDailySummary,
+    generateSubId,
+    type DailyRecordDoc,
+    type MealLite,
+    type BodyMeasurementEntryLite,
+    type WorkoutLite,
+} from "#server/utils/daily-helpers";
 
 interface CreateDailyBody {
     date: string;
-    caloricGoal: number;
-    waterGoal: { value: number; unit: string };
-    bodyMeasurements: unknown[];
-    meals: unknown[];
-    workout: unknown | null;
-    water: {
-        intake: { value: number; unit: string };
-        goal: { value: number; unit: string };
+    caloricGoal?: number;
+    waterGoal?: { value: number; unit: "l" | "ml" };
+    bodyMeasurements?: BodyMeasurementEntryLite[];
+    meals?: MealLite[];
+    workout?: WorkoutLite | null;
+    water?: {
+        intake: { value: number; unit: "l" | "ml" };
+        goal: { value: number; unit: "l" | "ml" };
     };
-    summary: Record<string, unknown>;
-    notes: string;
+    notes?: string;
 }
 
 export default defineEventHandler(async (event) => {
-    const { userId } = await requireAdmin(event);
+    const ctx = await requirePermission(event, "nutrition.edit");
+    const userId = await getDataOwnerId(ctx);
+    await ensureDailyRecordsIndexes();
 
-    const body = await readBody<CreateDailyBody>(event);
-    const {
-        date,
-        caloricGoal,
-        waterGoal,
-        bodyMeasurements,
-        meals,
-        workout,
-        water,
-        summary,
-        notes,
-    } = body;
+    const rawBody = await readBody<CreateDailyBody>(event);
+    const body = sanitizeMongoInput(rawBody);
+    const { date, caloricGoal, waterGoal, bodyMeasurements, meals, workout, water, notes } = body;
 
     validateRequired(date, "date");
     validateDate(date);
 
-    const db = await getDatabase();
-    const collection = db.collection("dailyRecords");
-
-    await collection
-        .createIndex({ userId: 1, date: 1 }, { unique: true })
-        .catch(() => {});
-
-    const now = new Date().toISOString();
-
-    const recordData = {
+    const rec: DailyRecordDoc = emptyDailyRecord(
         userId,
         date,
-        bodyMeasurements: bodyMeasurements || [],
-        meals: meals || [],
-        workout: workout || null,
-        water: water || {
-            intake: { value: 0, unit: waterGoal?.unit || "l" },
-            goal: waterGoal || { value: 3, unit: "l" },
-        },
-        caloricGoal: caloricGoal || 2000,
-        summary: summary || {},
-        notes: notes || "",
-        updatedAt: now,
-    };
-
-    const result = await collection.updateOne(
-        { userId, date },
-        {
-            $set: recordData,
-            $setOnInsert: { createdAt: now },
-        },
-        { upsert: true },
+        waterGoal || (water?.goal as { value: number; unit: "l" | "ml" }),
+        caloricGoal,
     );
 
-    const action = result.upsertedCount > 0 ? "created" : "updated";
+    rec.bodyMeasurements = (bodyMeasurements || []).map((m) => ({
+        ...m,
+        id: m.id || generateSubId(),
+        timestamp: m.timestamp || new Date().toISOString(),
+    }));
 
-    return { success: true, date, action };
+    rec.meals = (meals || []).map((m) => {
+        const meal: MealLite = {
+            ...m,
+            id: m.id || generateSubId(),
+            foods: m.foods || [],
+            totalCalories: 0,
+            totalWeight: 0,
+        };
+        recomputeMealTotals(meal);
+        return meal;
+    });
+
+    if (workout) {
+        const w: WorkoutLite = { ...workout, id: workout.id || generateSubId() };
+        recomputeWorkoutTotals(w);
+        rec.workout = w;
+    } else {
+        rec.workout = null;
+    }
+
+    if (water) {
+        rec.water = water;
+    }
+
+    rec.notes = (typeof notes === "string" ? notes : "").slice(0, 5000);
+    recomputeDailySummary(rec);
+
+    await persistDailyRecord(rec);
+
+    return { success: true, date };
 });

@@ -51,6 +51,7 @@ export interface BioimpedanceMeasurement {
 export type MeasurementTime = "morning" | "evening";
 
 export interface BodyMeasurementEntry {
+    id?: string;
     time: MeasurementTime;
     timestamp: string;
     data: BioimpedanceMeasurement;
@@ -93,6 +94,7 @@ export interface FoodItem {
 }
 
 export interface Meal {
+    id?: string;
     type: MealType;
     label: string;
     time: string; // HH:mm
@@ -152,6 +154,7 @@ export interface Exercise {
 }
 
 export interface WorkoutSession {
+    id?: string;
     startTime: string; // HH:mm
     endTime: string; // HH:mm
     totalDurationMinutes: number;

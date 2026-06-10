@@ -1,34 +1,45 @@
 <template>
     <div>
         <!-- Header -->
-        <div class="d-flex align-center mb-6">
+        <div class="d-flex align-center mb-3 dashboard-header flex-wrap ga-2">
             <div>
-                <h1 class="text-h4 font-weight-bold">Dashboard</h1>
-                <p class="text-body-2 text-grey mt-1">
-                    {{ greeting }}, {{ authStore.user?.name || "User" }}
+                <h1 class="text-h5 text-md-h4 font-weight-bold gradient-text">Dashboard</h1>
+                <p class="text-body-2 text-grey">
+                    {{ greeting }}, {{ authStore.user?.name || "Usuário" }}
                 </p>
             </div>
             <v-spacer />
             <v-btn
-                v-if="authStore.isAdmin"
+                v-if="authStore.can('nutrition.edit')"
                 color="primary"
                 size="large"
-                prepend-icon="mdi-plus"
-                to="/daily/new"
-                class="mr-2"
+                prepend-icon="mdi-silverware-fork-knife"
+                to="/meals/quick"
+                class="mr-2 text-white"
             >
-                Nova Entrada
+                Refeição Rápida
+            </v-btn>
+            <v-btn
+                v-if="authStore.can('nutrition.edit')"
+                color="deep-purple-darken-2"
+                size="large"
+                prepend-icon="mdi-calendar-plus"
+                to="/daily/new"
+                class="mr-2 text-white"
+            >
+                Entrada Completa
             </v-btn>
             <v-btn
                 icon="mdi-refresh"
-                variant="outlined"
+                variant="tonal"
+                color="primary"
                 :loading="loading"
                 @click="loadAllData"
             />
         </div>
 
         <!-- Top Stats Cards -->
-        <v-row class="mb-4">
+        <v-row class="mb-3">
             <v-col cols="12" sm="6" md="3">
                 <v-card class="stat-card" color="primary" variant="elevated">
                     <v-card-text class="d-flex align-center">
@@ -193,7 +204,7 @@
         </v-row>
 
         <!-- Today's Quick View -->
-        <v-card v-if="todayRecord" class="mb-4">
+        <v-card v-if="todayRecord" class="mb-3">
             <v-card-title class="d-flex align-center">
                 <v-icon start>mdi-calendar-today</v-icon>
                 Resumo de Hoje — {{ todayFormatted }}
@@ -316,7 +327,7 @@
         </v-card>
 
         <!-- Entries Table -->
-        <v-card class="mb-4">
+        <v-card class="mb-3">
             <v-card-title class="d-flex align-center">
                 <v-icon start>mdi-table</v-icon>
                 Histórico de Entradas
@@ -947,19 +958,7 @@
 import { format, subDays, parseISO, getDaysInMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Line, Bar, Doughnut } from "vue-chartjs";
-import {
-    Chart as ChartJS,
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    BarElement,
-    ArcElement,
-    Title,
-    Tooltip,
-    Legend,
-    Filler,
-} from "chart.js";
+// Chart.js components are registered once globally in app/plugins/chartjs.client.ts
 import { useAuthStore } from "~/stores/auth.store";
 import type { DailyRecord } from "~~/shared/types/daily";
 
@@ -978,19 +977,6 @@ interface DailySummary {
     totalFats: number;
     totalFiber: number;
 }
-
-ChartJS.register(
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    BarElement,
-    ArcElement,
-    Title,
-    Tooltip,
-    Legend,
-    Filler,
-);
 
 // ===== Auth & State =====
 const authStore = useAuthStore();
@@ -1737,13 +1723,28 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.dashboard-header {
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.gradient-text {
+    background: linear-gradient(135deg, #4CAF50, #03DAC6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
 .stat-card {
-    transition: transform 0.2s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 .stat-card:hover {
-    transform: translateY(-2px);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
 }
 .entries-table :deep(tr) {
     cursor: pointer;
+    transition: background 0.15s ease;
+}
+.entries-table :deep(tr:hover) {
+    background: rgba(76, 175, 80, 0.05);
 }
 </style>

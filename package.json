@@ -11,7 +11,11 @@
         "build": "nuxt build",
         "generate": "nuxt generate",
         "preview": "nuxt preview",
-        "postinstall": "nuxt prepare"
+        "postinstall": "nuxt prepare",
+        "seed:admin": "node scripts/seed.mjs",
+        "seed:mock": "node scripts/seed.mjs --mock --days=3",
+        "reset:db": "node scripts/reset-db.mjs",
+        "e2e": "node scripts/e2e-test.mjs"
     },
     "dependencies": {
         "@mdi/font": "^7.4.47",

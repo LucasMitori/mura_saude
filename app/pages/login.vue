@@ -31,34 +31,34 @@ const registerForm = ref({
 
 // ===== Validation Rules =====
 const rules = {
-    required: (v: string) => !!v || "This field is required",
+    required: (v: string) => !!v || "Campo obrigatório",
     email: (v: string) =>
-        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) || "Invalid email",
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) || "Email inválido",
     minLength: (min: number) => (v: string) =>
-        v.length >= min || `Must be at least ${min} characters`,
+        v.length >= min || `Mínimo de ${min} caracteres`,
     strongPassword: (v: string) => {
-        if (v.length < 8) return "At least 8 characters";
-        if (!/[A-Z]/.test(v)) return "Must contain an uppercase letter";
-        if (!/[a-z]/.test(v)) return "Must contain a lowercase letter";
-        if (!/[0-9]/.test(v)) return "Must contain a number";
+        if (v.length < 8) return "Mínimo de 8 caracteres";
+        if (!/[A-Z]/.test(v)) return "Precisa de uma letra maiúscula";
+        if (!/[a-z]/.test(v)) return "Precisa de uma letra minúscula";
+        if (!/[0-9]/.test(v)) return "Precisa de um número";
         if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(v))
-            return "Must contain a special character";
+            return "Precisa de um caractere especial";
         return true;
     },
     passwordMatch: (v: string) =>
-        v === registerForm.value.password || "Passwords do not match",
+        v === registerForm.value.password || "As senhas não coincidem",
 };
 
 // ===== Password Strength =====
 const passwordRequirements = computed(() => {
     const p = registerForm.value.password;
     return [
-        { label: "At least 8 characters", met: p.length >= 8 },
-        { label: "Uppercase letter (A-Z)", met: /[A-Z]/.test(p) },
-        { label: "Lowercase letter (a-z)", met: /[a-z]/.test(p) },
-        { label: "Number (0-9)", met: /[0-9]/.test(p) },
+        { label: "Pelo menos 8 caracteres", met: p.length >= 8 },
+        { label: "Letra maiúscula (A-Z)", met: /[A-Z]/.test(p) },
+        { label: "Letra minúscula (a-z)", met: /[a-z]/.test(p) },
+        { label: "Número (0-9)", met: /[0-9]/.test(p) },
         {
-            label: "Special character (!@#$...)",
+            label: "Caractere especial (!@#$...)",
             met: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(p),
         },
     ];
@@ -72,34 +72,34 @@ const passwordStrength = computed(() => {
         return {
             percentage,
             color: "error",
-            label: "Weak",
+            label: "Fraca",
             colorClass: "text-error",
         };
     if (metCount <= 2)
         return {
             percentage,
             color: "warning",
-            label: "Fair",
+            label: "Regular",
             colorClass: "text-warning",
         };
     if (metCount <= 3)
         return {
             percentage,
             color: "info",
-            label: "Good",
+            label: "Boa",
             colorClass: "text-info",
         };
     if (metCount <= 4)
         return {
             percentage,
             color: "light-green",
-            label: "Strong",
+            label: "Forte",
             colorClass: "text-light-green",
         };
     return {
         percentage,
         color: "success",
-        label: "Excellent",
+        label: "Excelente",
         colorClass: "text-success",
     };
 });
@@ -137,7 +137,7 @@ async function handleRegister() {
     registerError.value = null;
 
     if (registerForm.value.password !== registerForm.value.confirmPassword) {
-        registerError.value = "Passwords do not match";
+        registerError.value = "As senhas não coincidem";
         return;
     }
 
@@ -178,7 +178,7 @@ async function handleRegister() {
                     </v-card-title>
 
                     <v-card-subtitle class="text-center text-body-1 pb-4">
-                        Sign in to your account
+                        Entre na sua conta
                     </v-card-subtitle>
 
                     <v-card-text>
@@ -199,7 +199,7 @@ async function handleRegister() {
                             <v-text-field
                                 v-model="loginForm.password"
                                 :type="showLoginPassword ? 'text' : 'password'"
-                                label="Password"
+                                label="Senha"
                                 prepend-inner-icon="mdi-lock-outline"
                                 :append-inner-icon="
                                     showLoginPassword
@@ -233,7 +233,7 @@ async function handleRegister() {
                                 :loading="authStore.loading"
                                 class="mb-4"
                             >
-                                Sign In
+                                Entrar
                             </v-btn>
                         </v-form>
                     </v-card-text>
@@ -242,14 +242,14 @@ async function handleRegister() {
 
                     <v-card-actions class="justify-center pa-4">
                         <span class="text-body-2 text-grey">
-                            Don't have an account?
+                            Não tem uma conta?
                         </span>
                         <v-btn
                             variant="text"
                             color="primary"
                             @click="flipToRegister"
                         >
-                            Create Account
+                            Criar conta
                         </v-btn>
                     </v-card-actions>
                 </v-card>
@@ -268,11 +268,11 @@ async function handleRegister() {
                         <v-icon size="40" color="secondary" class="mr-2">
                             mdi-account-plus
                         </v-icon>
-                        Register
+                        Criar conta
                     </v-card-title>
 
                     <v-card-subtitle class="text-center text-body-1 pb-4">
-                        Create your account
+                        Crie sua conta
                     </v-card-subtitle>
 
                     <v-card-text>
@@ -282,7 +282,7 @@ async function handleRegister() {
                         >
                             <v-text-field
                                 v-model="registerForm.name"
-                                label="Full Name"
+                                label="Nome completo"
                                 prepend-inner-icon="mdi-account-outline"
                                 variant="outlined"
                                 :rules="[rules.required, rules.minLength(3)]"
@@ -304,7 +304,7 @@ async function handleRegister() {
                                 :type="
                                     showRegisterPassword ? 'text' : 'password'
                                 "
-                                label="Password"
+                                label="Senha"
                                 prepend-inner-icon="mdi-lock-outline"
                                 :append-inner-icon="
                                     showRegisterPassword
@@ -324,7 +324,7 @@ async function handleRegister() {
                                 :type="
                                     showConfirmPassword ? 'text' : 'password'
                                 "
-                                label="Confirm Password"
+                                label="Confirmar senha"
                                 prepend-inner-icon="mdi-lock-check-outline"
                                 :append-inner-icon="
                                     showConfirmPassword
@@ -349,7 +349,7 @@ async function handleRegister() {
                                         class="d-flex justify-space-between mb-1"
                                     >
                                         <span class="text-caption"
-                                            >Password Strength</span
+                                            >Força da senha</span
                                         >
                                         <span
                                             class="text-caption"
@@ -418,7 +418,7 @@ async function handleRegister() {
                                 :loading="authStore.loading"
                                 class="mb-4"
                             >
-                                Create Account
+                                Criar conta
                             </v-btn>
                         </v-form>
                     </v-card-text>
@@ -427,14 +427,14 @@ async function handleRegister() {
 
                     <v-card-actions class="justify-center pa-4">
                         <span class="text-body-2 text-grey">
-                            Already have an account?
+                            Já tem uma conta?
                         </span>
                         <v-btn
                             variant="text"
                             color="primary"
                             @click="flipToLogin"
                         >
-                            Sign In
+                            Entrar
                         </v-btn>
                     </v-card-actions>
                 </v-card>

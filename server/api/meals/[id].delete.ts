@@ -1,43 +1,37 @@
-import { getDatabase } from "#server/utils/mongodb";
-import { requireAdmin } from "#server/utils/roles";
+import { requirePermission, getDataOwnerId } from "#server/utils/roles";
+import { validateRequired, validateDate, sanitizeMongoInput } from "#server/utils/validators";
+import {
+    getOrCreateDailyRecord,
+    persistDailyRecord,
+    recomputeDailySummary,
+} from "#server/utils/daily-helpers";
 
 interface DeleteMealBody {
     date: string;
-    mealIndex: number;
 }
 
 export default defineEventHandler(async (event) => {
-    const { userId } = await requireAdmin(event);
+    const ctx = await requirePermission(event, "nutrition.edit");
+    const userId = await getDataOwnerId(ctx);
 
-    const body = await readBody<DeleteMealBody>(event);
-    const { date, mealIndex } = body;
+    const id = getRouterParam(event, "id");
+    if (!id) throw createError({ statusCode: 400, message: "Meal id is required" });
 
-    if (!date || mealIndex === undefined) {
-        throw createError({
-            statusCode: 400,
-            message: "date and mealIndex are required",
-        });
+    const rawBody = await readBody<DeleteMealBody>(event);
+    const body = sanitizeMongoInput(rawBody);
+    const { date } = body;
+
+    validateRequired(date, "date");
+    validateDate(date);
+
+    const rec = await getOrCreateDailyRecord(userId, date);
+    const before = rec.meals.length;
+    rec.meals = rec.meals.filter((m) => m.id !== id);
+    if (rec.meals.length === before) {
+        throw createError({ statusCode: 404, message: "Meal not found" });
     }
-
-    const db = await getDatabase();
-    const collection = db.collection("dailyRecords");
-
-    const record = await collection.findOne({ userId, date });
-    if (!record) {
-        throw createError({ statusCode: 404, message: "Record not found" });
-    }
-
-    const meals = record.meals as unknown[];
-    if (mealIndex < 0 || mealIndex >= meals.length) {
-        throw createError({ statusCode: 400, message: "Invalid meal index" });
-    }
-
-    meals.splice(mealIndex, 1);
-
-    await collection.updateOne(
-        { userId, date },
-        { $set: { meals, updatedAt: new Date() } },
-    );
+    recomputeDailySummary(rec);
+    await persistDailyRecord(rec);
 
     return { success: true };
 });

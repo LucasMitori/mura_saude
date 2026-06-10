@@ -1,10 +1,10 @@
 import { $fetch } from "ofetch";
-import type { BodyMeasurement } from "#shared/types/daily";
+import type { BodyMeasurementEntry } from "#shared/types/daily";
 import { useAuthStore } from "~/stores/auth.store";
 
 interface MeasurementRecord {
     date: string;
-    bodyMeasurement: BodyMeasurement;
+    bodyMeasurements: BodyMeasurementEntry[];
 }
 
 export function useMeasurements() {

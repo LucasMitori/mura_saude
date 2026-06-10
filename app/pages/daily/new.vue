@@ -1,28 +1,29 @@
 <template>
     <div>
-        <div class="d-flex align-center mb-6">
-            <v-btn
-                icon="mdi-arrow-left"
-                variant="text"
-                @click="$router.back()"
-            />
-            <h1 class="text-h4 ml-2">Nova Entrada Diária</h1>
+        <div class="d-flex align-center mb-3 flex-wrap ga-2">
+            <h1 class="text-h5 text-md-h4 font-weight-bold">
+                Nova Entrada Diária
+            </h1>
             <v-spacer />
             <v-chip color="primary" variant="elevated" size="large">
                 <v-icon start>mdi-calendar</v-icon>
                 {{ dateFormatted }}
             </v-chip>
+            <v-btn
+                icon="mdi-arrow-left"
+                variant="tonal"
+                @click="$router.back()"
+            />
         </div>
 
         <!-- Date & Basic Config -->
-        <v-card class="mb-4">
+        <v-card class="mb-3">
             <v-card-text>
                 <v-row>
                     <v-col cols="12" md="4">
-                        <v-text-field
+                        <AppDateField
                             v-model="form.date"
                             label="Data"
-                            type="date"
                             variant="outlined"
                             prepend-inner-icon="mdi-calendar"
                         />
@@ -37,7 +38,7 @@
                         />
                     </v-col>
                     <v-col cols="12" md="4">
-                        <v-row dense>
+                        <v-row density="comfortable">
                             <v-col cols="8">
                                 <v-text-field
                                     v-model.number="form.waterGoal"
@@ -63,7 +64,7 @@
         </v-card>
 
         <!-- Main Tabs Table -->
-        <v-card class="mb-4">
+        <v-card class="mb-3">
             <v-tabs v-model="activeTab" color="primary" grow>
                 <v-tab value="measurements">
                     <v-icon start>mdi-scale-bathroom</v-icon>
@@ -249,7 +250,7 @@
                                 </v-expansion-panel-title>
 
                                 <v-expansion-panel-text>
-                                    <v-row dense class="mb-3">
+                                    <v-row density="comfortable" class="mb-3">
                                         <v-col cols="12" md="4">
                                             <v-select
                                                 v-model="meal.type"
@@ -270,10 +271,9 @@
                                             />
                                         </v-col>
                                         <v-col cols="12" md="2">
-                                            <v-text-field
+                                            <AppTimeField
                                                 v-model="meal.time"
                                                 label="Horário"
-                                                type="time"
                                                 variant="outlined"
                                                 density="compact"
                                             />
@@ -525,21 +525,19 @@
                         </div>
 
                         <div v-if="form.workout">
-                            <v-row dense class="mb-4">
+                            <v-row density="comfortable" class="mb-4">
                                 <v-col cols="12" md="3">
-                                    <v-text-field
+                                    <AppTimeField
                                         v-model="form.workout.startTime"
                                         label="Hora Início"
-                                        type="time"
                                         variant="outlined"
                                         density="compact"
                                     />
                                 </v-col>
                                 <v-col cols="12" md="3">
-                                    <v-text-field
+                                    <AppTimeField
                                         v-model="form.workout.endTime"
                                         label="Hora Fim"
-                                        type="time"
                                         variant="outlined"
                                         density="compact"
                                         @update:model-value="
@@ -842,20 +840,56 @@
         </v-card>
 
         <!-- Real-time Calorie Chart + Summary -->
-        <v-row class="mb-4">
+        <v-row class="mb-3">
             <v-col cols="12" md="8">
-                <v-card>
+                <v-card class="h-100 d-flex flex-column">
                     <v-card-title>
                         <v-icon start>mdi-chart-bar</v-icon>
                         Balanço Calórico do Dia
                     </v-card-title>
-                    <v-card-text>
-                        <Bar
-                            v-if="chartData"
-                            :data="chartData"
-                            :options="chartOptions"
-                            style="max-height: 300px"
-                        />
+                    <v-divider />
+                    <v-card-text class="flex-grow-1 d-flex flex-column">
+                        <div class="chart-wrap flex-grow-1">
+                            <Bar
+                                v-if="chartData"
+                                :data="chartData"
+                                :options="chartOptions"
+                            />
+                        </div>
+                        <v-row density="comfortable" class="mt-2">
+                            <v-col cols="6" sm="3">
+                                <div class="mini-metric mini-metric--orange">
+                                    <span class="text-caption">Consumido</span>
+                                    <span class="text-h6 font-weight-bold">
+                                        {{ summaryData.totalCaloriesConsumed }} kcal
+                                    </span>
+                                </div>
+                            </v-col>
+                            <v-col cols="6" sm="3">
+                                <div class="mini-metric mini-metric--red">
+                                    <span class="text-caption">Queimado</span>
+                                    <span class="text-h6 font-weight-bold">
+                                        {{ summaryData.totalCaloriesBurned }} kcal
+                                    </span>
+                                </div>
+                            </v-col>
+                            <v-col cols="6" sm="3">
+                                <div class="mini-metric mini-metric--blue">
+                                    <span class="text-caption">Meta</span>
+                                    <span class="text-h6 font-weight-bold">
+                                        {{ form.caloricGoal }} kcal
+                                    </span>
+                                </div>
+                            </v-col>
+                            <v-col cols="6" sm="3">
+                                <div class="mini-metric mini-metric--green">
+                                    <span class="text-caption">Líquido</span>
+                                    <span class="text-h6 font-weight-bold">
+                                        {{ summaryData.netCalories }} kcal
+                                    </span>
+                                </div>
+                            </v-col>
+                        </v-row>
                     </v-card-text>
                 </v-card>
             </v-col>
@@ -895,34 +929,7 @@
                             }}
                         </v-chip>
                         <v-divider class="my-4" />
-                        <v-row dense>
-                            <v-col cols="6">
-                                <p class="text-caption text-grey">Consumido</p>
-                                <p class="text-h6">
-                                    {{ summaryData.totalCaloriesConsumed }} kcal
-                                </p>
-                            </v-col>
-                            <v-col cols="6">
-                                <p class="text-caption text-grey">Queimado</p>
-                                <p class="text-h6">
-                                    {{ summaryData.totalCaloriesBurned }} kcal
-                                </p>
-                            </v-col>
-                            <v-col cols="6">
-                                <p class="text-caption text-grey">Meta</p>
-                                <p class="text-h6">
-                                    {{ form.caloricGoal }} kcal
-                                </p>
-                            </v-col>
-                            <v-col cols="6">
-                                <p class="text-caption text-grey">Líquido</p>
-                                <p class="text-h6">
-                                    {{ summaryData.netCalories }} kcal
-                                </p>
-                            </v-col>
-                        </v-row>
-                        <v-divider class="my-4" />
-                        <v-row dense>
+                        <v-row density="comfortable">
                             <v-col cols="6">
                                 <p class="text-caption text-grey">
                                     Peso Inicial
@@ -968,7 +975,7 @@
         </v-row>
 
         <!-- Notes -->
-        <v-card class="mb-4">
+        <v-card class="mb-3">
             <v-card-text>
                 <v-textarea
                     v-model="form.notes"
@@ -981,7 +988,7 @@
         </v-card>
 
         <!-- Action Buttons -->
-        <div class="d-flex justify-end gap-3 mb-8">
+        <div class="d-flex justify-end gap-3 mb-3">
             <v-btn variant="outlined" @click="$router.back()"> Cancelar </v-btn>
             <v-btn
                 color="primary"
@@ -1018,7 +1025,7 @@
                         class="mb-3"
                     />
 
-                    <v-row dense>
+                    <v-row density="comfortable">
                         <v-col cols="6" md="4">
                             <v-text-field
                                 v-model.number="bioForm.weight"
@@ -1376,15 +1383,7 @@
 <script setup lang="ts">
 import { format } from "date-fns";
 import { Bar } from "vue-chartjs";
-import {
-    Chart as ChartJS,
-    CategoryScale,
-    LinearScale,
-    BarElement,
-    Title,
-    Tooltip,
-    Legend,
-} from "chart.js";
+// Chart.js components are registered once globally in app/plugins/chartjs.client.ts
 import type {
     MealType,
     FoodItem,
@@ -1392,26 +1391,14 @@ import type {
     WorkoutSession,
     Exercise,
     BodyMeasurementEntry,
-    BioimpedanceMeasurement,
     MeasurementTime,
     ExerciseCategory,
     MuscleGroup,
     WorkoutIntensity,
-    DailyWater,
-    MeasurementValue,
     VolumeUnit,
-    MEAL_TYPE_LABELS,
-    MUSCLE_GROUP_LABELS,
 } from "~~/shared/types/daily";
 
-ChartJS.register(
-    CategoryScale,
-    LinearScale,
-    BarElement,
-    Title,
-    Tooltip,
-    Legend,
-);
+definePageMeta({ requiresPermission: "nutrition.edit" });
 
 // ===== Constants =====
 const mealTypeOptions: { label: string; value: MealType }[] = [
@@ -1955,3 +1942,38 @@ function openReviewDialog() {
     showReviewDialog.value = true;
 }
 </script>
+
+<style scoped>
+.chart-wrap {
+    position: relative;
+    min-height: 240px;
+    max-height: 320px;
+}
+.chart-wrap > :deep(canvas) {
+    max-height: 320px !important;
+}
+.mini-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border-left: 3px solid currentColor;
+}
+.mini-metric span.text-caption {
+    opacity: 0.75;
+}
+.mini-metric--orange {
+    color: #ffa726;
+}
+.mini-metric--red {
+    color: #ef5350;
+}
+.mini-metric--blue {
+    color: #42a5f5;
+}
+.mini-metric--green {
+    color: #66bb6a;
+}
+</style>

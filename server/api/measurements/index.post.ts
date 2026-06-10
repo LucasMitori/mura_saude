@@ -1,36 +1,44 @@
-import { getDatabase } from "#server/utils/mongodb";
-import { requireAdmin } from "#server/utils/roles";
-import { validateRequired, validateDate } from "#server/utils/validators";
+import { requirePermission, getDataOwnerId } from "#server/utils/roles";
+import { validateRequired, validateDate, sanitizeMongoInput } from "#server/utils/validators";
+import {
+    getOrCreateDailyRecord,
+    persistDailyRecord,
+    recomputeDailySummary,
+    generateSubId,
+    type BodyMeasurementEntryLite,
+} from "#server/utils/daily-helpers";
 
 interface MeasurementBody {
     date: string;
-    bodyMeasurement: Record<string, unknown>;
+    measurement: Partial<BodyMeasurementEntryLite>;
 }
 
 export default defineEventHandler(async (event) => {
-    const { userId } = await requireAdmin(event);
+    const ctx = await requirePermission(event, "nutrition.edit");
+    const userId = await getDataOwnerId(ctx);
 
-    const body = await readBody<MeasurementBody>(event);
-    const { date, bodyMeasurement } = body;
+    const rawBody = await readBody<MeasurementBody>(event);
+    const body = sanitizeMongoInput(rawBody);
+    const { date, measurement } = body;
 
     validateRequired(date, "date");
     validateDate(date);
-    validateRequired(bodyMeasurement, "bodyMeasurement");
+    validateRequired(measurement, "measurement");
 
-    const db = await getDatabase();
-    const collection = db.collection("dailyRecords");
+    const time = measurement.time === "evening" ? "evening" : "morning";
 
-    const result = await collection.updateOne(
-        { userId, date },
-        { $set: { bodyMeasurement, updatedAt: new Date() } },
-    );
+    const rec = await getOrCreateDailyRecord(userId, date);
 
-    if (result.matchedCount === 0) {
-        throw createError({
-            statusCode: 404,
-            message: "Daily record not found. Create it first.",
-        });
-    }
+    const entry: BodyMeasurementEntryLite = {
+        id: generateSubId(),
+        time,
+        timestamp: measurement.timestamp || new Date().toISOString(),
+        data: (measurement.data || {}) as Record<string, unknown>,
+    };
 
-    return { success: true };
+    rec.bodyMeasurements.push(entry);
+    recomputeDailySummary(rec);
+    await persistDailyRecord(rec);
+
+    return { success: true, measurementId: entry.id };
 });

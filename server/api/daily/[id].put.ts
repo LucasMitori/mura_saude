@@ -1,35 +1,38 @@
 import { getDatabase } from "#server/utils/mongodb";
-import { requireAdmin } from "#server/utils/roles";
-import { ObjectId } from "mongodb";
+import { requirePermission, getDataOwnerId, toObjectIdOrThrow } from "#server/utils/roles";
+import { sanitizeMongoInput, validateString } from "#server/utils/validators";
 
 interface UpdateDailyBody {
-    bodyMeasurement?: unknown;
-    workout?: unknown;
     notes?: string;
+    caloricGoal?: number;
 }
 
 export default defineEventHandler(async (event) => {
-    const { userId } = await requireAdmin(event);
+    const ctx = await requirePermission(event, "nutrition.edit");
+    const userId = await getDataOwnerId(ctx);
 
     const id = getRouterParam(event, "id");
     if (!id) {
         throw createError({ statusCode: 400, message: "ID is required" });
     }
+    const oid = toObjectIdOrThrow(id);
 
-    const body = await readBody<UpdateDailyBody>(event);
-    const { bodyMeasurement, workout, notes } = body;
+    const rawBody = await readBody<UpdateDailyBody>(event);
+    const body = sanitizeMongoInput(rawBody);
+
+    const updateFields: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+    if (typeof body.notes === "string") {
+        updateFields.notes = validateString(body.notes, "notes", 5000);
+    }
+    if (typeof body.caloricGoal === "number" && Number.isFinite(body.caloricGoal)) {
+        updateFields.caloricGoal = Math.max(0, Math.min(10000, body.caloricGoal));
+    }
 
     const db = await getDatabase();
     const collection = db.collection("dailyRecords");
 
-    const updateFields: Record<string, unknown> = { updatedAt: new Date() };
-    if (bodyMeasurement !== undefined)
-        updateFields.bodyMeasurement = bodyMeasurement;
-    if (workout !== undefined) updateFields.workout = workout;
-    if (notes !== undefined) updateFields.notes = notes;
-
     const result = await collection.updateOne(
-        { _id: new ObjectId(id), userId },
+        { _id: oid, userId },
         { $set: updateFields },
     );
 

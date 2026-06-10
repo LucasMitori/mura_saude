@@ -1,38 +1,62 @@
-import { getDatabase } from "#server/utils/mongodb";
-import { requireAdmin } from "#server/utils/roles";
+import { requirePermission, getDataOwnerId } from "#server/utils/roles";
 import {
     validateRequired,
+    validateDate,
     validatePositiveNumber,
+    validateVolumeUnit,
+    sanitizeMongoInput,
 } from "#server/utils/validators";
+import {
+    getOrCreateDailyRecord,
+    persistDailyRecord,
+    recomputeDailySummary,
+} from "#server/utils/daily-helpers";
 
 interface WaterBody {
     date: string;
-    intake: number;
+    intake?: number;
+    addMl?: number;
+    goal?: { value: number; unit: "l" | "ml" };
 }
 
 export default defineEventHandler(async (event) => {
-    const { userId } = await requireAdmin(event);
+    const ctx = await requirePermission(event, "nutrition.edit");
+    const userId = await getDataOwnerId(ctx);
 
-    const body = await readBody<WaterBody>(event);
-    const { date, intake } = body;
+    const rawBody = await readBody<WaterBody>(event);
+    const body = sanitizeMongoInput(rawBody);
+    const { date, intake, addMl, goal } = body;
 
     validateRequired(date, "date");
-    validatePositiveNumber(intake, "intake");
+    validateDate(date);
 
-    const db = await getDatabase();
-    const collection = db.collection("dailyRecords");
+    const rec = await getOrCreateDailyRecord(userId, date);
 
-    const result = await collection.updateOne(
-        { userId, date },
-        { $set: { "water.intake.value": intake, updatedAt: new Date() } },
-    );
-
-    if (result.matchedCount === 0) {
-        throw createError({
-            statusCode: 404,
-            message: "Daily record not found",
-        });
+    if (goal && typeof goal === "object") {
+        if (!validateVolumeUnit(goal.unit)) {
+            throw createError({ statusCode: 400, message: "Invalid water goal unit" });
+        }
+        validatePositiveNumber(goal.value, "goal.value");
+        rec.water.goal = { value: goal.value, unit: goal.unit };
+        if (rec.water.intake.unit !== goal.unit) {
+            rec.water.intake.unit = goal.unit;
+        }
     }
 
-    return { success: true };
+    if (typeof intake === "number") {
+        validatePositiveNumber(intake, "intake");
+        rec.water.intake.value = Math.round(intake * 100) / 100;
+    } else if (typeof addMl === "number" && addMl !== 0) {
+        const unit = rec.water.intake.unit;
+        const delta = unit === "l" ? addMl / 1000 : addMl;
+        rec.water.intake.value = Math.max(
+            0,
+            Math.round((rec.water.intake.value + delta) * 100) / 100,
+        );
+    }
+
+    recomputeDailySummary(rec);
+    await persistDailyRecord(rec);
+
+    return { success: true, water: rec.water };
 });
