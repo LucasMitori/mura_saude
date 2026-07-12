@@ -7,6 +7,20 @@ definePageMeta({
 
 const authStore = useAuthStore();
 
+// ===== Custom background (set by the admin in /admin/settings) =====
+// Public endpoint; 404 simply means "no background configured".
+const backgroundUrl = ref<string | null>(null);
+onMounted(async () => {
+    try {
+        const blob = await $fetch<Blob>("/api/settings/login-background", {
+            responseType: "blob",
+        });
+        backgroundUrl.value = URL.createObjectURL(blob);
+    } catch {
+        backgroundUrl.value = null;
+    }
+});
+
 // ===== State =====
 const isRegistering = ref(false);
 const showLoginPassword = ref(false);
@@ -156,7 +170,9 @@ async function handleRegister() {
 
 <template>
     <v-container
-        class="fill-height d-flex align-center justify-center"
+        class="fill-height d-flex align-center justify-center login-bg"
+        :class="{ 'has-image': !!backgroundUrl }"
+        :style="backgroundUrl ? { backgroundImage: `url(${backgroundUrl})` } : undefined"
         style="height: 100vh"
         fluid
     >
@@ -228,10 +244,11 @@ async function handleRegister() {
                             <v-btn
                                 type="submit"
                                 color="primary"
+                                variant="flat"
                                 block
                                 size="large"
                                 :loading="authStore.loading"
-                                class="mb-4"
+                                class="mb-4 login-submit-btn"
                             >
                                 Entrar
                             </v-btn>
@@ -413,6 +430,7 @@ async function handleRegister() {
                             <v-btn
                                 type="submit"
                                 color="secondary"
+                                variant="flat"
                                 block
                                 size="large"
                                 :loading="authStore.loading"
@@ -444,6 +462,22 @@ async function handleRegister() {
 </template>
 
 <style scoped>
+.login-bg {
+    background-size: cover;
+    background-position: center;
+    position: relative;
+}
+/* Dim the image slightly so the card stays readable on any photo. */
+.login-bg.has-image::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+}
+.login-bg.has-image .flip-container {
+    z-index: 1;
+}
+
 .flip-container {
     perspective: 1200px;
     width: 420px;

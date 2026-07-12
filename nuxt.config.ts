@@ -27,7 +27,7 @@ export default defineNuxtConfig({
     // feature appends `@mdi/font/css/materialdesignicons.css` (a bare specifier)
     // into nuxt.options.css later; we replace that with the absolute path
     // inside the `ready` hook so Nuxt emits a working <link>.
-    css: [vuetifyMainCss, mdiFontCss],
+    css: [vuetifyMainCss, mdiFontCss, "~/assets/css/vuetify-cascade-fix.css"],
 
     hooks: {
         ready(nuxt) {

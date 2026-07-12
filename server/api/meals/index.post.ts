@@ -7,9 +7,8 @@ import {
 } from "#server/utils/validators";
 import {
     getOrCreateDailyRecord,
-    persistDailyRecord,
+    appendMealAndRecompute,
     recomputeMealTotals,
-    recomputeDailySummary,
     generateSubId,
     type MealLite,
 } from "#server/utils/daily-helpers";
@@ -42,7 +41,8 @@ export default defineEventHandler(async (event) => {
         });
     }
 
-    const rec = await getOrCreateDailyRecord(userId, date);
+    // Ensure the day exists (concurrency-safe), then append atomically below.
+    await getOrCreateDailyRecord(userId, date);
 
     const newMeal: MealLite = {
         id: generateSubId(),
@@ -64,9 +64,7 @@ export default defineEventHandler(async (event) => {
     };
     recomputeMealTotals(newMeal);
 
-    rec.meals.push(newMeal);
-    recomputeDailySummary(rec);
-    await persistDailyRecord(rec);
+    await appendMealAndRecompute(userId, date, newMeal);
 
     return { success: true, mealId: newMeal.id };
 });

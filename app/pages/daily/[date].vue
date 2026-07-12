@@ -440,6 +440,7 @@ const {
     updateDailyMeta,
     deleteDailyRecord,
 } = useDaily();
+const { uploadMealImage, removeMealImage } = useMealImages();
 
 const record = ref<DailyRecord | null>(null);
 const loading = ref(true);
@@ -614,15 +615,35 @@ function openMealForm(meal: Meal | null) {
     showMealForm.value = true;
 }
 
-async function handleSubmitMeal(meal: Meal) {
+async function handleSubmitMeal(
+    meal: Meal,
+    image: { file: File | null; remove: boolean },
+) {
     try {
-        if (meal.id) {
-            await updateMeal(dateParam, meal.id, meal);
-            notify("Refeição atualizada");
+        let mealId = meal.id;
+        if (mealId) {
+            await updateMeal(dateParam, mealId, meal);
         } else {
-            await addMeal(dateParam, meal);
-            notify("Refeição adicionada");
+            const res = await addMeal(dateParam, meal);
+            mealId = res.mealId;
         }
+        // Photo changes are separate calls — the meal is already saved even if
+        // the image step fails, so report that failure without rolling back.
+        if (mealId) {
+            try {
+                if (image.file) {
+                    await uploadMealImage(dateParam, mealId, image.file);
+                } else if (image.remove && meal.image) {
+                    await removeMealImage(dateParam, mealId);
+                }
+            } catch (imgErr) {
+                notify(`Refeição salva, mas a foto falhou: ${getErrorMessage(imgErr)}`, "error");
+                showMealForm.value = false;
+                await fetchRecord();
+                return;
+            }
+        }
+        notify(meal.id ? "Refeição atualizada" : "Refeição adicionada");
         showMealForm.value = false;
         await fetchRecord();
     } catch (e) {

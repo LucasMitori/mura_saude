@@ -196,6 +196,72 @@
                 prepend-inner-icon="mdi-note-text-outline"
                 class="mt-3"
             />
+
+            <h3 class="text-subtitle-1 mb-2">
+                <v-icon start size="20">mdi-camera</v-icon>
+                Foto da Refeição
+            </h3>
+            <p class="text-caption text-medium-emphasis mb-2">
+                <v-icon size="14" class="mr-1">mdi-information-outline</v-icon>
+                JPEG, PNG ou WebP até 5 MB. A foto é excluída automaticamente
+                após {{ MEAL_IMAGE_TTL_DAYS }} dias.
+            </p>
+            <v-file-input
+                v-model="imageFile"
+                accept="image/jpeg,image/png,image/webp"
+                label="Selecionar foto"
+                prepend-icon=""
+                prepend-inner-icon="mdi-camera-plus"
+                variant="outlined"
+                density="comfortable"
+                show-size
+                clearable
+                :error-messages="imageError ? [imageError] : []"
+                @update:model-value="onImagePicked"
+            />
+            <div v-if="imagePreviewUrl" class="d-flex align-center ga-3 mb-2">
+                <v-img
+                    :src="imagePreviewUrl"
+                    height="120"
+                    width="168"
+                    cover
+                    class="rounded-lg flex-grow-0"
+                />
+                <span class="text-caption text-medium-emphasis">
+                    Nova foto — será enviada ao salvar.
+                </span>
+            </div>
+            <template v-else-if="isEditing && form.image && !removeCurrentImage">
+                <div class="d-flex align-center ga-3 mb-2">
+                    <MealImageThumb :image="form.image" :height="120" />
+                    <v-btn
+                        size="small"
+                        variant="tonal"
+                        color="error"
+                        prepend-icon="mdi-image-remove"
+                        @click="removeCurrentImage = true"
+                    >
+                        Remover foto
+                    </v-btn>
+                </div>
+            </template>
+            <v-alert
+                v-else-if="removeCurrentImage"
+                type="warning"
+                variant="tonal"
+                density="compact"
+                class="mb-2"
+            >
+                A foto atual será removida ao salvar.
+                <v-btn
+                    size="x-small"
+                    variant="text"
+                    class="ml-2"
+                    @click="removeCurrentImage = false"
+                >
+                    Desfazer
+                </v-btn>
+            </v-alert>
         </v-card-text>
 
         <v-divider />
@@ -220,6 +286,8 @@
 import { ref, computed, watch } from "vue";
 import type { Meal, MealType, FoodItem } from "#shared/types/daily";
 import type { NutritionFood, NutritionPer100g } from "#shared/types/nutrition";
+import { MEAL_IMAGE_TTL_DAYS } from "#shared/meal-images";
+import type { MealImageUpdate } from "~/composables/useMealImages";
 
 // A food row may carry a transient `_per100g` basis (when picked from Open Food
 // Facts) so editing the weight rescales calories/macros. It is stripped before
@@ -238,9 +306,33 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-    submit: [meal: Meal];
+    submit: [meal: Meal, image: MealImageUpdate];
     cancel: [];
 }>();
+
+// --- Meal photo ---
+const { validateImageFile } = useMealImages();
+const imageFile = ref<File | null>(null);
+const imageError = ref<string | null>(null);
+const imagePreviewUrl = ref<string | null>(null);
+const removeCurrentImage = ref(false);
+
+function onImagePicked(value: File | File[] | null) {
+    const file = Array.isArray(value) ? (value[0] ?? null) : value;
+    imageError.value = null;
+    if (imagePreviewUrl.value) {
+        URL.revokeObjectURL(imagePreviewUrl.value);
+        imagePreviewUrl.value = null;
+    }
+    if (!file) return;
+    const problem = validateImageFile(file);
+    if (problem) {
+        imageError.value = problem;
+        imageFile.value = null;
+        return;
+    }
+    imagePreviewUrl.value = URL.createObjectURL(file);
+}
 
 const mealTypeOptions: { label: string; value: MealType }[] = [
     { label: "🌅 Pré-Treino", value: "pre_workout" },
@@ -406,7 +498,11 @@ function submit() {
         const { _per100g, ...rest } = f as FoodRow;
         return rest as FoodItem;
     });
-    emit("submit", { ...form.value, foods });
+    emit(
+        "submit",
+        { ...form.value, foods },
+        { file: imageFile.value, remove: removeCurrentImage.value },
+    );
 }
 </script>
 

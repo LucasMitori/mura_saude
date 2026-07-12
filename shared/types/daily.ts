@@ -102,6 +102,10 @@ export interface Meal {
     totalCalories: number;
     totalWeight: number;
     notes?: string;
+    // Photo of the meal. The binary lives in the `mealImages` collection with a
+    // 30-day TTL; this ref stays behind after expiry so the UI can explain that
+    // the photo was auto-deleted. See shared/meal-images.ts.
+    image?: import("../meal-images").MealImageRef | null;
 }
 
 // ===== WORKOUT =====

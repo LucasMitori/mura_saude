@@ -311,7 +311,13 @@ async function main() {
         );
         if (status === 200 && json?.token) {
             viewerToken = json.token;
-            log("POST /api/auth/register viewer", json.user.role === "viewer", `role=${json.user.role}`);
+            // "viewer" was renamed to "user" (legacy value still normalizes) —
+            // either way registration must never grant elevated roles.
+            log(
+                "POST /api/auth/register viewer",
+                json.user.role === "user" || json.user.role === "viewer",
+                `role=${json.user.role}`,
+            );
         } else {
             log("POST /api/auth/register viewer", false, `status=${status}`);
         }
@@ -392,6 +398,156 @@ async function main() {
             newPassword: "OtherStrong#1!",
         });
         log("PUT /api/auth/me wrong current password → 401", status === 401);
+    }
+
+    // ===== Meal images (5MB max, 30-day TTL, admin gallery) =====
+
+    // tiny valid 1x1 PNG
+    const PNG_1PX =
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
+    // 30. Create a meal to attach images to
+    let imgMealId = "";
+    {
+        const { status, json } = await api("POST", "/api/meals", {
+            date: testDate,
+            meal: {
+                type: "breakfast",
+                label: "E2E image meal",
+                time: "08:00",
+                foods: [{ name: "Toast", weightGrams: 60, calories: 160 }],
+            },
+        });
+        if (status === 200 && json?.mealId) imgMealId = json.mealId;
+        log("POST /api/meals (image test meal)", !!imgMealId);
+    }
+
+    // 31. Upload a photo to the meal
+    let imageId = "";
+    if (imgMealId) {
+        const { status, json } = await api("POST", `/api/meals/${imgMealId}/image`, {
+            date: testDate,
+            dataUrl: PNG_1PX,
+        });
+        if (status === 200 && json?.imageId) imageId = json.imageId;
+        log("POST /api/meals/:id/image upload", !!imageId, `imageId=${imageId.slice(0, 8)}`);
+    }
+
+    // 32. Fetch the binary back with correct content type
+    if (imageId) {
+        const res = await fetch(`${BASE}/api/meal-images/${imageId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        const buf = await res.arrayBuffer();
+        log(
+            "GET /api/meal-images/:id returns binary",
+            res.status === 200 &&
+                res.headers.get("content-type")?.includes("image/png") &&
+                buf.byteLength > 0,
+            `${buf.byteLength} bytes`,
+        );
+    }
+
+    // 33. Meal carries the image ref
+    if (imgMealId) {
+        const { json } = await api("GET", `/api/daily?date=${testDate}`);
+        const m = (json?.meals || []).find((x) => x.id === imgMealId);
+        log(
+            "Meal has image ref { id, uploadedAt }",
+            m?.image?.id === imageId && typeof m?.image?.uploadedAt === "string",
+        );
+    }
+
+    // 34. Anonymous fetch of image → 401
+    if (imageId) {
+        const res = await fetch(`${BASE}/api/meal-images/${imageId}`);
+        log("GET /api/meal-images/:id without token → 401", res.status === 401);
+    }
+
+    // 35. Oversized payload rejected (>5MB) → 413
+    if (imgMealId) {
+        const { status } = await api("POST", `/api/meals/${imgMealId}/image`, {
+            date: testDate,
+            dataUrl: `data:image/png;base64,${"A".repeat(7 * 1024 * 1024)}`,
+        });
+        log("Oversized image (>5MB) → 413", status === 413, `status=${status}`);
+    }
+
+    // 36. Unsupported format rejected → 400
+    if (imgMealId) {
+        const { status } = await api("POST", `/api/meals/${imgMealId}/image`, {
+            date: testDate,
+            dataUrl: "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+        });
+        log("Unsupported format (gif) → 400", status === 400);
+    }
+
+    // 37. Content-type spoofing rejected (PNG bytes declared as JPEG) → 400
+    if (imgMealId) {
+        const { status } = await api("POST", `/api/meals/${imgMealId}/image`, {
+            date: testDate,
+            dataUrl: PNG_1PX.replace("data:image/png", "data:image/jpeg"),
+        });
+        log("Magic-byte mismatch rejected → 400", status === 400);
+    }
+
+    // 38. Admin gallery lists the photo grouped by day
+    {
+        const { status, json } = await api("GET", "/api/admin/gallery");
+        const day = (json?.days || []).find((d) => d.date === testDate);
+        const found = day?.images?.some((i) => i.id === imageId);
+        log(
+            "GET /api/admin/gallery groups by day",
+            status === 200 && !!found && typeof json.totalBytes === "number" && json.ttlDays === 30,
+            `days=${json?.days?.length} totalBytes=${json?.totalBytes}`,
+        );
+    }
+
+    // 39. Viewer cannot access the gallery → 403
+    if (viewerToken) {
+        const res = await fetch(`${BASE}/api/admin/gallery`, {
+            headers: { Authorization: `Bearer ${viewerToken}` },
+        });
+        log("Viewer GET /api/admin/gallery → 403", res.status === 403);
+    }
+
+    // 40. Admin deletes photo from gallery → binary gone AND ref cleared
+    if (imageId) {
+        const del = await api("DELETE", `/api/meal-images/${imageId}`);
+        const gone = await fetch(`${BASE}/api/meal-images/${imageId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        const { json } = await api("GET", `/api/daily?date=${testDate}`);
+        const m = (json?.meals || []).find((x) => x.id === imgMealId);
+        log(
+            "DELETE /api/meal-images/:id (admin) clears binary + meal ref",
+            del.status === 200 && gone.status === 404 && !m?.image,
+        );
+    }
+
+    // 41. Deleting a meal cascades to its photo
+    if (imgMealId) {
+        const up = await api("POST", `/api/meals/${imgMealId}/image`, {
+            date: testDate,
+            dataUrl: PNG_1PX,
+        });
+        const newImageId = up.json?.imageId;
+        await api("DELETE", `/api/meals/${imgMealId}`, { date: testDate });
+        const gone = await fetch(`${BASE}/api/meal-images/${newImageId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        log("DELETE meal cascades to its photo", up.status === 200 && gone.status === 404);
+    }
+
+    // 42. Cleanup: remove the whole test day
+    {
+        const { json } = await api("GET", `/api/daily?date=${testDate}`);
+        if (json?._id) {
+            const { status } = await api("DELETE", `/api/daily/${json._id}`);
+            log("Cleanup test day", status === 200);
+        } else {
+            log("Cleanup test day", true, "already absent");
+        }
     }
 
     console.log(`\n=== ${passed} passed, ${failed} failed ===`);

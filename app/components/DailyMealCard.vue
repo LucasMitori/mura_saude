@@ -84,6 +84,10 @@
             <v-icon size="14" class="mr-1">mdi-note-text-outline</v-icon>
             <span class="text-caption text-grey">{{ meal.notes }}</span>
         </v-card-text>
+
+        <v-card-text v-if="meal.image" class="pt-1 pb-3">
+            <MealImageThumb :image="meal.image" />
+        </v-card-text>
     </v-card>
 </template>
 

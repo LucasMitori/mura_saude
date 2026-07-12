@@ -94,13 +94,14 @@
         >
             <v-list-item
                 :title="userDisplayName"
-                class="pa-4 user-card"
+                class="user-card"
                 link
                 to="/profile"
             >
                 <template #prepend>
                     <v-avatar
                         :color="hasAvatar ? undefined : avatarBgColor"
+                        variant="flat"
                         size="42"
                         class="sidebar-avatar"
                     >
@@ -163,6 +164,18 @@
                     prepend-icon="mdi-account-group"
                     title="Usuários"
                     to="/admin/users"
+                />
+                <v-list-item
+                    v-if="authStore.can('users.manage')"
+                    prepend-icon="mdi-image-multiple"
+                    title="Galeria de Fotos"
+                    to="/admin/gallery"
+                />
+                <v-list-item
+                    v-if="authStore.can('users.manage')"
+                    prepend-icon="mdi-cog"
+                    title="Configurações"
+                    to="/admin/settings"
                 />
             </v-list>
 
@@ -344,6 +357,9 @@ async function handleLogout() {
     );
     cursor: pointer;
     transition: background 0.2s ease;
+    /* Scoped (not utility classes) so it survives Vuetify's component CSS
+       ordering — breathing room around the avatar, above and below. */
+    padding: 20px 16px !important;
 }
 .user-card:hover {
     background: linear-gradient(

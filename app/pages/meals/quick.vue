@@ -83,6 +83,7 @@ import type { Meal, MealType } from "#shared/types/daily";
 definePageMeta({ requiresPermission: "nutrition.edit" });
 
 const { addMeal } = useDaily();
+const { uploadMealImage } = useMealImages();
 const router = useRouter();
 const route = useRoute();
 
@@ -133,9 +134,23 @@ function quickSelectType(type: MealType) {
     meal.value.time = format(new Date(), "HH:mm");
 }
 
-async function handleSubmit(m: Meal) {
+async function handleSubmit(m: Meal, image: { file: File | null; remove: boolean }) {
     try {
-        await addMeal(date.value, m);
+        const res = await addMeal(date.value, m);
+        if (image.file && res.mealId) {
+            try {
+                await uploadMealImage(date.value, res.mealId, image.file);
+            } catch (imgErr: unknown) {
+                // The meal itself was saved — surface the photo failure clearly.
+                const err = imgErr as { data?: { message?: string }; message?: string };
+                notify(
+                    `Refeição salva, mas a foto falhou: ${err?.data?.message || err?.message || "erro"}`,
+                    "error",
+                );
+                setTimeout(() => navigateTo(`/daily/${date.value}`), 1500);
+                return;
+            }
+        }
         notify("Refeição adicionada com sucesso!");
         setTimeout(() => navigateTo(`/daily/${date.value}`), 600);
     } catch (e: unknown) {

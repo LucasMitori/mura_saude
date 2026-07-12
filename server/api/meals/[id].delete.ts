@@ -5,6 +5,7 @@ import {
     persistDailyRecord,
     recomputeDailySummary,
 } from "#server/utils/daily-helpers";
+import { deleteMealImagesByIds } from "#server/utils/meal-images";
 
 interface DeleteMealBody {
     date: string;
@@ -26,9 +27,14 @@ export default defineEventHandler(async (event) => {
 
     const rec = await getOrCreateDailyRecord(userId, date);
     const before = rec.meals.length;
+    const removed = rec.meals.find((m) => m.id === id);
     rec.meals = rec.meals.filter((m) => m.id !== id);
     if (rec.meals.length === before) {
         throw createError({ statusCode: 404, message: "Meal not found" });
+    }
+    // Don't orphan the meal's photo binary in mealImages.
+    if (removed?.image?.id) {
+        await deleteMealImagesByIds([removed.image.id]);
     }
     recomputeDailySummary(rec);
     await persistDailyRecord(rec);

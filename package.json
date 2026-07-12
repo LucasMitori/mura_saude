@@ -8,6 +8,7 @@
     "private": true,
     "scripts": {
         "dev": "nuxt dev",
+        "dev:local": "node scripts/dev-local.mjs",
         "build": "nuxt build",
         "generate": "nuxt generate",
         "preview": "nuxt preview",
@@ -15,6 +16,8 @@
         "seed:admin": "node scripts/seed.mjs",
         "seed:mock": "node scripts/seed.mjs --mock --days=3",
         "reset:db": "node scripts/reset-db.mjs",
+        "test:db": "node scripts/db-check.mjs",
+        "test:perf": "node scripts/perf-security-test.mjs",
         "e2e": "node scripts/e2e-test.mjs"
     },
     "dependencies": {

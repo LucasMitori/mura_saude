@@ -60,6 +60,7 @@ export function getOpenApiSpec() {
             { name: "Auth", description: "Registration, login, profile" },
             { name: "Daily", description: "Daily records (single-patient data)" },
             { name: "Meals", description: "Per-meal CRUD" },
+            { name: "Meal Images", description: "Meal photos (5 MB max, auto-deleted after 30 days via MongoDB TTL)" },
             { name: "Measurements", description: "Bioimpedância entries" },
             { name: "Water", description: "Water intake" },
             { name: "Workout", description: "A day's logged workout" },
@@ -67,6 +68,7 @@ export function getOpenApiSpec() {
             { name: "Exercises", description: "Exercise search (wger + local)" },
             { name: "Nutrition", description: "Food search (Open Food Facts)" },
             { name: "Admin", description: "User role management" },
+            { name: "Settings", description: "App customization (login background — permanent, no TTL)" },
             { name: "Health", description: "Service health" },
         ],
         paths: {
@@ -111,6 +113,17 @@ export function getOpenApiSpec() {
                 put: { tags: ["Meals"], summary: "Edit a meal", description: authPerm("nutrition.edit"), security: bearer, parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": ok("Updated"), "403": ok("Forbidden") } },
                 delete: { tags: ["Meals"], summary: "Delete a meal", description: authPerm("nutrition.edit"), security: bearer, parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": ok("Deleted"), "403": ok("Forbidden") } },
             },
+            "/api/meals/{id}/image": {
+                post: { tags: ["Meal Images"], summary: "Attach/replace a meal's photo", description: authPerm("nutrition.edit") + " Body: `{ date, dataUrl }` — a `data:image/(jpeg|png|webp);base64,` payload, max 5 MB, magic-byte validated. Replacing deletes the previous binary. Photos are auto-deleted after 30 days (TTL); the meal keeps a `{ id, uploadedAt }` ref so the UI can explain the expiry.", security: bearer, parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["date", "dataUrl"], properties: { date: { type: "string", example: "2026-07-11" }, dataUrl: { type: "string" } } } } } }, responses: { "200": ok("Uploaded — returns { imageId, uploadedAt }"), "400": ok("Invalid format / magic-byte mismatch"), "403": ok("Forbidden"), "404": ok("Meal not found"), "413": ok("Larger than 5 MB") } },
+                delete: { tags: ["Meal Images"], summary: "Remove a meal's photo (editor)", description: authPerm("nutrition.edit") + " Deletes the binary AND clears the meal's ref (no expiry message is shown). Body: `{ date }`.", security: bearer, parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": ok("Removed"), "404": ok("Meal or image not found") } },
+            },
+            "/api/meal-images/{id}": {
+                get: { tags: ["Meal Images"], summary: "Fetch a photo binary", description: authPerm("nutrition.view") + " Returns the raw image with its content type. 404 after TTL expiry or deletion.", security: bearer, parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": { description: "Image binary", content: { "image/jpeg": {}, "image/png": {}, "image/webp": {} } }, "404": ok("Not found or expired") } },
+                delete: { tags: ["Meal Images"], summary: "Delete a photo (admin gallery)", description: "Admin only. Frees database space; also clears the owning meal's ref so no expiry message is shown.", security: bearer, parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": ok("Deleted — returns { freedBytes }"), "403": ok("Forbidden"), "404": ok("Not found") } },
+            },
+            "/api/admin/gallery": {
+                get: { tags: ["Meal Images"], summary: "Gallery index grouped by day", description: authPerm("users.manage") + " Metadata only (no binaries): `{ days: [{ date, count, totalBytes, images: [...] }], totalCount, totalBytes, ttlDays }`.", security: bearer, responses: { "200": jsonObj, "403": ok("Forbidden") } },
+            },
             "/api/measurements": {
                 get: { tags: ["Measurements"], summary: "Bioimpedância history", security: bearer, responses: { "200": jsonObj } },
                 post: { tags: ["Measurements"], summary: "Add a measurement", description: authPerm("nutrition.edit"), security: bearer, responses: { "200": ok("Added"), "403": ok("Forbidden") } },
@@ -150,6 +163,11 @@ export function getOpenApiSpec() {
             },
             "/api/admin/users/{id}": {
                 put: { tags: ["Admin"], summary: "Change a user's role/specialty", description: authPerm("users.manage") + " Guards: cannot change your own role; cannot demote the last admin.", security: bearer, parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], requestBody: { content: { "application/json": { schema: { type: "object", required: ["role"], properties: { role: { type: "string", enum: ["admin", "manager", "user"] }, specialty: { type: "string", enum: ["personal_trainer", "nutritionist"], nullable: true } } } } } }, responses: { "200": ok("Updated"), "400": ok("Bad role / guard"), "403": ok("Forbidden") } },
+            },
+            "/api/settings/login-background": {
+                get: { tags: ["Settings"], summary: "Login background image (public)", description: "Public — the login page is pre-auth. 404 when no background is configured.", responses: { "200": { description: "Image binary", content: { "image/jpeg": {}, "image/png": {}, "image/webp": {} } }, "404": ok("No background set") } },
+                put: { tags: ["Settings"], summary: "Set/replace the login background", description: "Admin only. Body: `{ dataUrl }` (JPEG/PNG/WebP, ≤ 5 MB, magic-byte validated). Stored WITHOUT TTL — never auto-deleted.", security: bearer, requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["dataUrl"], properties: { dataUrl: { type: "string" } } } } } }, responses: { "200": ok("Saved"), "400": ok("Invalid image"), "403": ok("Forbidden"), "413": ok("Larger than 5 MB") } },
+                delete: { tags: ["Settings"], summary: "Remove the login background", description: "Admin only. Login reverts to the plain theme.", security: bearer, responses: { "200": ok("Removed"), "403": ok("Forbidden"), "404": ok("None set") } },
             },
             "/api/health": {
                 get: { tags: ["Health"], summary: "Service health (public)", responses: { "200": jsonObj } },

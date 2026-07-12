@@ -29,6 +29,7 @@
                     <v-card-text class="text-center pt-6">
                         <v-avatar
                             :color="avatarBgColor"
+                            variant="flat"
                             size="140"
                             class="profile-avatar mb-4"
                         >

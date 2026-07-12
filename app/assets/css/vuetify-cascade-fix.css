@@ -1,0 +1,47 @@
+/*
+ * Cascade fix for Vuetify color utilities.
+ *
+ * This project injects vuetify's prebuilt main.css manually (see nuxt.config),
+ * and in dev Vite appends per-component styles AFTER the runtime theme
+ * stylesheet. Result: `.v-btn--variant-flat { background: surface }` (and the
+ * v-avatar equivalent) is declared later than `.bg-primary` etc., so colored
+ * flat/elevated buttons and avatars render WHITE in the light theme.
+ *
+ * These !important re-declarations make the color utilities win regardless of
+ * stylesheet order. Theme colors stay var-based so light/dark switching works.
+ */
+
+.v-btn.bg-primary, .v-avatar.bg-primary, .v-chip.bg-primary {
+    background-color: rgb(var(--v-theme-primary)) !important;
+    color: rgb(var(--v-theme-on-primary)) !important;
+}
+.v-btn.bg-secondary, .v-avatar.bg-secondary, .v-chip.bg-secondary {
+    background-color: rgb(var(--v-theme-secondary)) !important;
+    color: rgb(var(--v-theme-on-secondary)) !important;
+}
+.v-btn.bg-accent, .v-avatar.bg-accent, .v-chip.bg-accent {
+    background-color: rgb(var(--v-theme-accent)) !important;
+    color: rgb(var(--v-theme-on-accent)) !important;
+}
+.v-btn.bg-error, .v-avatar.bg-error, .v-chip.bg-error {
+    background-color: rgb(var(--v-theme-error)) !important;
+    color: rgb(var(--v-theme-on-error)) !important;
+}
+.v-btn.bg-info, .v-avatar.bg-info, .v-chip.bg-info {
+    background-color: rgb(var(--v-theme-info)) !important;
+    color: rgb(var(--v-theme-on-info)) !important;
+}
+.v-btn.bg-success, .v-avatar.bg-success, .v-chip.bg-success {
+    background-color: rgb(var(--v-theme-success)) !important;
+    color: rgb(var(--v-theme-on-success)) !important;
+}
+.v-btn.bg-warning, .v-avatar.bg-warning, .v-chip.bg-warning {
+    background-color: rgb(var(--v-theme-warning)) !important;
+    color: rgb(var(--v-theme-on-warning)) !important;
+}
+
+/* Static material colors used with avatars (admin avatar). */
+.v-btn.bg-amber-darken-2, .v-avatar.bg-amber-darken-2, .v-chip.bg-amber-darken-2 {
+    background-color: #ffa000 !important;
+    color: #ffffff !important;
+}

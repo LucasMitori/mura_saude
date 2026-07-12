@@ -23,6 +23,9 @@ export interface MealLite {
     totalCalories: number;
     totalWeight: number;
     notes?: string;
+    // Kept after the binary's 30-day TTL deletion so the UI can explain why
+    // the photo is gone (see shared/meal-images.ts).
+    image?: { id: string; uploadedAt: string } | null;
 }
 
 export interface BodyMeasurementEntryLite {
@@ -170,8 +173,44 @@ export async function getOrCreateDailyRecord(
         return existing as unknown as DailyRecordDoc;
     }
     const fresh = emptyDailyRecord(userId, date);
-    await col.insertOne(fresh as unknown as Record<string, unknown>);
+    try {
+        await col.insertOne(fresh as unknown as Record<string, unknown>);
+    } catch (err: unknown) {
+        // Duplicate key: a concurrent request created the day between our
+        // findOne and insertOne. The unique (userId,date) index makes this
+        // safe — just use the winner's document.
+        if ((err as { code?: number })?.code === 11000) {
+            const winner = await col.findOne({ userId, date });
+            if (winner) return winner as unknown as DailyRecordDoc;
+        }
+        throw err;
+    }
     return fresh;
+}
+
+/**
+ * Append one meal atomically via $push — unlike persistDailyRecord (which
+ * replaces the whole meals array), concurrent adds can never overwrite each
+ * other. The summary is recomputed from a fresh read afterwards.
+ */
+export async function appendMealAndRecompute(
+    userId: string,
+    date: string,
+    meal: MealLite,
+): Promise<void> {
+    const db = await getDatabase();
+    const col = db.collection("dailyRecords");
+    await col.updateOne(
+        { userId, date },
+        {
+            $push: { meals: meal as unknown as never },
+            $set: { updatedAt: new Date().toISOString() },
+        },
+    );
+    const fresh = (await col.findOne({ userId, date })) as unknown as DailyRecordDoc | null;
+    if (!fresh) return;
+    recomputeDailySummary(fresh);
+    await col.updateOne({ userId, date }, { $set: { summary: fresh.summary } });
 }
 
 export async function persistDailyRecord(rec: DailyRecordDoc): Promise<void> {
