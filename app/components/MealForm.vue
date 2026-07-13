@@ -203,8 +203,9 @@
             </h3>
             <p class="text-caption text-medium-emphasis mb-2">
                 <v-icon size="14" class="mr-1">mdi-information-outline</v-icon>
-                JPEG, PNG ou WebP até 5 MB. A foto é excluída automaticamente
-                após {{ MEAL_IMAGE_TTL_DAYS }} dias.
+                JPEG, PNG ou WebP — fotos grandes são comprimidas
+                automaticamente. A foto é excluída automaticamente após
+                {{ MEAL_IMAGE_TTL_DAYS }} dias.
             </p>
             <v-file-input
                 v-model="imageFile"
@@ -217,6 +218,7 @@
                 show-size
                 clearable
                 :error-messages="imageError ? [imageError] : []"
+                :messages="imageHint ? [imageHint] : []"
                 @update:model-value="onImagePicked"
             />
             <div v-if="imagePreviewUrl" class="d-flex align-center ga-3 mb-2">
@@ -311,26 +313,35 @@ const emit = defineEmits<{
 }>();
 
 // --- Meal photo ---
-const { validateImageFile } = useMealImages();
+const { validateImageFile, compressImageFile } = useMealImages();
 const imageFile = ref<File | null>(null);
 const imageError = ref<string | null>(null);
+const imageHint = ref<string | null>(null);
 const imagePreviewUrl = ref<string | null>(null);
 const removeCurrentImage = ref(false);
 
-function onImagePicked(value: File | File[] | null) {
-    const file = Array.isArray(value) ? (value[0] ?? null) : value;
+async function onImagePicked(value: File | File[] | null) {
+    const raw = Array.isArray(value) ? (value[0] ?? null) : value;
     imageError.value = null;
+    imageHint.value = null;
     if (imagePreviewUrl.value) {
         URL.revokeObjectURL(imagePreviewUrl.value);
         imagePreviewUrl.value = null;
     }
-    if (!file) return;
+    if (!raw) return;
+    // Large photos are downscaled/re-encoded client-side so the upload fits
+    // every host's request limit (Vercel caps bodies at ~4.5 MB).
+    const file = await compressImageFile(raw);
     const problem = validateImageFile(file);
     if (problem) {
         imageError.value = problem;
         imageFile.value = null;
         return;
     }
+    if (file !== raw) {
+        imageHint.value = `Foto comprimida de ${(raw.size / (1024 * 1024)).toFixed(1)} MB para ${(file.size / (1024 * 1024)).toFixed(1)} MB.`;
+    }
+    imageFile.value = file;
     imagePreviewUrl.value = URL.createObjectURL(file);
 }
 

@@ -120,7 +120,7 @@ curl -X POST http://localhost:3000/api/auth/seed-admin \
 
 Photos live in the `mealImages` collection with a **MongoDB TTL index** (`createdAt`, 30 days) — the database deletes them automatically, even when the app isn't running. The meal keeps its `{ id, uploadedAt }` ref after expiry, so the meal card shows *"A foto desta refeição foi removida automaticamente após 30 dias."* instead of silently losing the photo. Deleting a meal or a whole day cascades to its photos.
 
-> **Vercel note:** Vercel serverless functions cap request/response bodies at ~4.5 MB, so in production the practical photo limit is slightly below the app's 5 MB cap. Local/self-hosted deployments get the full 5 MB.
+> **Upload size note:** photos travel as base64 JSON (+33%), and Vercel caps request bodies at ~4.5 MB. To make uploads work everywhere, the client **compresses images automatically** before uploading (downscale to ≤2560px, WebP, target ≤2.5 MB) — even a 30 MB camera photo uploads fine. The 5 MB server cap remains as the hard backstop.
 
 ### Per-period bioimpedance
 - `GET  /api/measurements?from=&to=&limit=`
@@ -151,15 +151,35 @@ Photos live in the `mealImages` collection with a **MongoDB TTL index** (`create
 
 ## Security hardening applied
 
-- JWT secret required (no insecure fallback) with `issuer` claim
-- ObjectId inputs validated to prevent 500s on malformed IDs
-- Rate limiting on `/auth/login`, `/auth/register`, `/auth/seed-admin`
-- MongoDB query input sanitized (rejects `$`/`.` keys) to prevent NoSQL injection
-- Strict response headers (X-Frame-Options, CSP-ish, HSTS, Referrer-Policy, etc.)
-- Stack traces suppressed in production responses
-- Login error is time-equalized to avoid email enumeration
-- Registration never auto-promotes to admin (admin is seeded only)
-- Removed dangerous unauthenticated `/api` root endpoints
+**Authentication & authorization**
+- JWT secret required (no insecure fallback), signed with `issuer` claim; forged/expired tokens → 401
+- Roles/permissions are resolved from the **database on every request** — the token only proves identity, so a tampered token or stale role can never escalate privileges
+- Login error is time-equalized (dummy bcrypt compare) to avoid email enumeration
+- Registration never auto-promotes to admin (admin is seeded only); strong-password rules enforced server-side
+- Rate limiting on `/auth/login` (8/min — brute force → 429), `/auth/register`, `/auth/seed-admin`
+
+**Injection & input**
+- MongoDB query input sanitized (rejects `$`/`.` keys) → NoSQL injection neutralized; login body is type-checked (objects rejected)
+- ObjectId inputs validated (malformed IDs → 400, never a 500 stack leak)
+- Bulk day-save maps every field explicitly — client input is never spread into documents, and photo refs cannot be forged through it
+- Image uploads: 5 MB cap enforced before decoding, MIME allow-list, **magic-byte sniffing** (a renamed .exe can't pass as .png)
+
+**Headers & transport (see `server/middleware/security-headers.ts` + `nuxt.config.ts`)**
+- Content-Security-Policy in production (no `unsafe-eval`; `connect-src 'self'` blocks data exfiltration to other origins; `frame-ancestors 'none'`)
+- HSTS (`max-age` 1y, preload), `upgrade-insecure-requests` — defeats protocol-downgrade interception
+- X-Frame-Options DENY, nosniff, `Referrer-Policy: no-referrer`, COOP/CORP same-origin, Permissions-Policy locked down
+- `X-Robots-Tag: noindex` + `robots.txt Disallow: /` — personal health data stays out of search engines
+- No CORS wildcard: the API only answers same-origin requests, so other websites cannot call it from a victim's browser
+
+**Information exposure**
+- Client source maps disabled in production builds — DevTools shows only the minified bundle, never the original `.vue`/`.ts` source (server maps stay local for debugging and are never served)
+- Stack traces stripped from production error responses; 5xx bodies are generic
+- `/docs` (Swagger) requires `?token=$API_DOCS_TOKEN` in production, disabled if unset
+- API responses are `Cache-Control: no-store` — no health data lingers in shared caches
+
+**Known trade-off**: the JWT lives in `localStorage` (simple SPA pattern). An XSS bug could read it — mitigated by the strict CSP, Vue's output escaping, and 7-day token expiry. Migrating to httpOnly cookies + CSRF tokens is the next step if the app ever becomes multi-tenant.
+
+Verified continuously by `pnpm e2e` (43 checks) and `pnpm test:perf` (29 checks incl. authz boundaries, injection, upload abuse, rate limiting, parallel-write races).
 
 ## Scripts
 

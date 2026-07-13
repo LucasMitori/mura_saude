@@ -2,10 +2,7 @@ import { Binary } from "mongodb";
 import { requirePermission, getDataOwnerId } from "#server/utils/roles";
 import { validateRequired, validateDate, sanitizeMongoInput } from "#server/utils/validators";
 import { getDatabase } from "#server/utils/mongodb";
-import {
-    getOrCreateDailyRecord,
-    persistDailyRecord,
-} from "#server/utils/daily-helpers";
+import { getOrCreateDailyRecord } from "#server/utils/daily-helpers";
 import {
     MEAL_IMAGES_COLLECTION,
     ensureMealImageIndexes,
@@ -71,7 +68,12 @@ export default defineEventHandler(async (event) => {
         .insertOne(doc);
 
     meal.image = { id: inserted.insertedId.toString(), uploadedAt: now.toISOString() };
-    await persistDailyRecord(rec);
+    // Positional $set touches only this meal's image ref — never rewrites the
+    // meals array, so concurrent meal writes on the same day are safe.
+    await db.collection("dailyRecords").updateOne(
+        { userId, date, "meals.id": mealId },
+        { $set: { "meals.$.image": meal.image, updatedAt: now.toISOString() } },
+    );
 
     return { success: true, imageId: meal.image.id, uploadedAt: meal.image.uploadedAt };
 });

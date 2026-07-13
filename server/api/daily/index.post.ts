@@ -1,5 +1,11 @@
 import { requirePermission, getDataOwnerId } from "#server/utils/roles";
-import { validateRequired, validateDate, sanitizeMongoInput } from "#server/utils/validators";
+import {
+    validateRequired,
+    validateDate,
+    validateMealType,
+    sanitizeMongoInput,
+} from "#server/utils/validators";
+import { deleteMealImagesForDate } from "#server/utils/meal-images";
 import {
     ensureDailyRecordsIndexes,
     emptyDailyRecord,
@@ -53,11 +59,28 @@ export default defineEventHandler(async (event) => {
         timestamp: m.timestamp || new Date().toISOString(),
     }));
 
+    // Explicit field mapping — never spread client input into the document.
+    // Note the absence of `image`: photos are attached ONLY through
+    // POST /api/meals/:id/image, so a bulk save cannot carry or forge a ref.
     rec.meals = (meals || []).map((m) => {
+        if (!validateMealType(m?.type)) {
+            throw createError({ statusCode: 400, message: "Invalid meal type" });
+        }
         const meal: MealLite = {
-            ...m,
-            id: m.id || generateSubId(),
-            foods: m.foods || [],
+            id: typeof m.id === "string" && m.id ? m.id : generateSubId(),
+            type: m.type,
+            label: typeof m.label === "string" ? m.label.slice(0, 300) : "",
+            time: typeof m.time === "string" ? m.time.slice(0, 5) : "",
+            notes: typeof m.notes === "string" ? m.notes.slice(0, 2000) : "",
+            foods: (Array.isArray(m.foods) ? m.foods : []).map((f) => ({
+                name: String(f?.name || "").slice(0, 300),
+                weightGrams: Number(f?.weightGrams) || 0,
+                calories: Number(f?.calories) || 0,
+                protein: f?.protein != null ? Number(f.protein) : undefined,
+                carbs: f?.carbs != null ? Number(f.carbs) : undefined,
+                fats: f?.fats != null ? Number(f.fats) : undefined,
+                fiber: f?.fiber != null ? Number(f.fiber) : undefined,
+            })),
             totalCalories: 0,
             totalWeight: 0,
         };
@@ -79,6 +102,10 @@ export default defineEventHandler(async (event) => {
 
     rec.notes = (typeof notes === "string" ? notes : "").slice(0, 5000);
     recomputeDailySummary(rec);
+
+    // This endpoint REPLACES the whole day. Any photos belonging to the
+    // previous version of this day would orphan in the gallery — remove them.
+    await deleteMealImagesForDate(userId, date);
 
     await persistDailyRecord(rec);
 

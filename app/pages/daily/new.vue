@@ -504,6 +504,14 @@
                             Nenhuma refeição adicionada. Clique em "Adicionar
                             Refeição" para começar.
                         </v-alert>
+
+                        <p class="text-caption text-medium-emphasis mt-3 mb-0">
+                            <v-icon size="14" class="mr-1">mdi-camera-off-outline</v-icon>
+                            A entrada completa não envia fotos — para anexar uma
+                            foto a uma refeição, use
+                            <NuxtLink to="/meals/quick">Adicionar Refeição</NuxtLink>
+                            ou edite a refeição na página do dia depois de salvar.
+                        </p>
                     </v-card-text>
                 </v-tabs-window-item>
 
@@ -987,11 +995,14 @@
             </v-card-text>
         </v-card>
 
-        <!-- Action Buttons -->
-        <div class="d-flex justify-end gap-3 mb-3">
-            <v-btn variant="outlined" @click="$router.back()"> Cancelar </v-btn>
+        <!-- Action Buttons — same height, spaced with ga-3 (Vuetify's gap utility) -->
+        <div class="d-flex justify-end ga-3 mb-3">
+            <v-btn variant="outlined" size="large" @click="$router.back()">
+                Cancelar
+            </v-btn>
             <v-btn
                 color="primary"
+                variant="flat"
                 size="large"
                 prepend-icon="mdi-content-save-check"
                 @click="openReviewDialog"
@@ -1351,13 +1362,18 @@
 
                 <v-divider />
 
-                <v-card-actions class="pa-4">
-                    <v-btn variant="outlined" @click="showReviewDialog = false">
+                <v-card-actions class="pa-4 ga-3">
+                    <v-btn
+                        variant="outlined"
+                        size="large"
+                        @click="showReviewDialog = false"
+                    >
                         Voltar e Editar
                     </v-btn>
                     <v-spacer />
                     <v-btn
                         color="primary"
+                        variant="flat"
                         size="large"
                         prepend-icon="mdi-content-save"
                         :loading="saving"

@@ -5,11 +5,11 @@ import {
     validateMealType,
     sanitizeMongoInput,
 } from "#server/utils/validators";
+import { getDatabase } from "#server/utils/mongodb";
 import {
     getOrCreateDailyRecord,
-    persistDailyRecord,
     recomputeMealTotals,
-    recomputeDailySummary,
+    recomputeSummaryAtomic,
     type MealLite,
 } from "#server/utils/daily-helpers";
 
@@ -66,9 +66,14 @@ export default defineEventHandler(async (event) => {
     };
     recomputeMealTotals(updated);
 
-    rec.meals[idx] = updated;
-    recomputeDailySummary(rec);
-    await persistDailyRecord(rec);
+    // Positional $set touches only this one meal — a concurrent add on the
+    // same day can never be overwritten by this edit.
+    const db = await getDatabase();
+    await db.collection("dailyRecords").updateOne(
+        { userId, date, "meals.id": id },
+        { $set: { "meals.$": updated as unknown as never } },
+    );
+    await recomputeSummaryAtomic(userId, date);
 
     return { success: true, meal: updated };
 });

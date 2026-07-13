@@ -84,23 +84,23 @@ async function main() {
         log("Wrong password → 401", status === 401);
     }
 
-    // 6. Fetch daily range (mock data)
+    // 6. Fetch daily range (works on an empty DB — the suite creates its own data)
     let firstDate = "";
     {
-        const { status, json } = await api("GET", "/api/daily?from=2026-06-01");
-        const ok = status === 200 && Array.isArray(json) && json.length >= 3;
-        if (ok) firstDate = json[0].date;
+        const { status, json } = await api("GET", "/api/daily?from=2026-01-01");
+        const ok = status === 200 && Array.isArray(json);
+        if (ok && json.length > 0) firstDate = json[0].date;
         log("GET /api/daily range", ok, `${Array.isArray(json) ? json.length : "?"} records`);
     }
 
-    // 7. Fetch single day
+    // 7. Fetch single day (only when history exists, e.g. after seed:mock)
     if (firstDate) {
         const { status, json } = await api("GET", `/api/daily?date=${firstDate}`);
         const meals = json?.meals?.length || 0;
         const summary = json?.summary;
         log(
             `GET /api/daily?date=${firstDate}`,
-            status === 200 && meals === 6 && typeof summary?.totalCaloriesConsumed === "number",
+            status === 200 && typeof summary?.totalCaloriesConsumed === "number",
             `meals=${meals} totalCalories=${summary?.totalCaloriesConsumed}`,
         );
     }
@@ -339,15 +339,15 @@ async function main() {
         log("Viewer POST /api/meals → 403", res.status === 403);
     }
 
-    // 23. Viewer CAN read admin data
+    // 23. Viewer CAN read admin data (the test day created above must be visible)
     if (viewerToken) {
-        const res = await fetch(`${BASE}/api/daily?from=2026-06-01`, {
+        const res = await fetch(`${BASE}/api/daily?from=2026-01-01`, {
             headers: { Authorization: `Bearer ${viewerToken}` },
         });
         const data = await res.json();
         log(
             "Viewer GET /api/daily reads admin data",
-            res.status === 200 && Array.isArray(data) && data.length >= 3,
+            res.status === 200 && Array.isArray(data) && data.some((r) => r.date === testDate),
             `${Array.isArray(data) ? data.length : "?"} records`,
         );
     }

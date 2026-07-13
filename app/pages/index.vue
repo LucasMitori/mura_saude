@@ -1120,7 +1120,9 @@ async function loadAllData() {
     try {
         const from = format(subDays(new Date(), 60), "yyyy-MM-dd");
         const records = await $fetch<DailyRecord[]>("/api/daily", {
-            query: { from },
+            // light=1: the dashboard only renders summaries/counts, so the
+            // server omits per-food rows — much smaller payload over 60 days.
+            query: { from, light: 1 },
             headers: authStore.authHeaders,
         });
         allRecords.value = Array.isArray(records) ? records : [];

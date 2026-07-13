@@ -22,6 +22,9 @@ const CSP = [
 ].join("; ");
 
 export default defineEventHandler((event) => {
+    // Personal health data — keep every page and API response out of search
+    // engines and AI crawlers (robots.txt also disallows all).
+    setResponseHeader(event, "X-Robots-Tag", "noindex, nofollow, noarchive");
     setResponseHeader(event, "X-DNS-Prefetch-Control", "off");
     setResponseHeader(event, "X-Download-Options", "noopen");
     setResponseHeader(event, "X-Permitted-Cross-Domain-Policies", "none");

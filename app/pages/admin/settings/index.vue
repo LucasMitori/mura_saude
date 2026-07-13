@@ -28,7 +28,8 @@
                                 Esta imagem aparece como fundo da página de login.
                                 Diferente das fotos de refeições, ela é
                                 <strong>permanente</strong> — nunca é excluída
-                                automaticamente após 30 dias. JPEG, PNG ou WebP até 5 MB.
+                                automaticamente após 30 dias. JPEG, PNG ou WebP —
+                                imagens grandes são comprimidas automaticamente.
                             </span>
                         </v-alert>
 
@@ -43,6 +44,7 @@
                             show-size
                             clearable
                             :error-messages="fileError ? [fileError] : []"
+                            :messages="fileHint ? [fileHint] : []"
                             @update:model-value="onFilePicked"
                         />
 
@@ -124,10 +126,11 @@ import { useAuthStore } from "~/stores/auth.store";
 definePageMeta({ requiresPermission: "users.manage" });
 
 const authStore = useAuthStore();
-const { validateImageFile } = useMealImages();
+const { validateImageFile, compressImageFile } = useMealImages();
 
 const file = ref<File | null>(null);
 const fileError = ref<string | null>(null);
+const fileHint = ref<string | null>(null);
 const previewUrl = ref<string | null>(null);
 const currentUrl = ref<string | null>(null);
 const hasCurrent = ref(false);
@@ -139,20 +142,28 @@ function notify(message: string, color: "success" | "error" = "success") {
     snackbar.value = { show: true, message, color };
 }
 
-function onFilePicked(value: File | File[] | null) {
-    const f = Array.isArray(value) ? (value[0] ?? null) : value;
+async function onFilePicked(value: File | File[] | null) {
+    const raw = Array.isArray(value) ? (value[0] ?? null) : value;
     fileError.value = null;
+    fileHint.value = null;
     if (previewUrl.value) {
         URL.revokeObjectURL(previewUrl.value);
         previewUrl.value = null;
     }
-    if (!f) return;
+    if (!raw) return;
+    // Large photos are downscaled/re-encoded client-side so the upload fits
+    // every host's request limit (Vercel caps bodies at ~4.5 MB).
+    const f = await compressImageFile(raw);
     const problem = validateImageFile(f);
     if (problem) {
         fileError.value = problem;
         file.value = null;
         return;
     }
+    if (f !== raw) {
+        fileHint.value = `Imagem comprimida de ${(raw.size / (1024 * 1024)).toFixed(1)} MB para ${(f.size / (1024 * 1024)).toFixed(1)} MB.`;
+    }
+    file.value = f;
     previewUrl.value = URL.createObjectURL(f);
 }
 
@@ -198,8 +209,22 @@ async function save() {
         }
         await loadCurrent();
     } catch (e: unknown) {
-        const err = e as { data?: { message?: string }; message?: string };
-        notify(err?.data?.message || err?.message || "Erro ao salvar", "error");
+        const err = e as {
+            status?: number;
+            statusCode?: number;
+            data?: { message?: string };
+            message?: string;
+        };
+        // Hosts like Vercel return a bare 413 (no JSON) when the request body
+        // exceeds their platform limit — give a useful message instead.
+        const is413 = err?.status === 413 || err?.statusCode === 413;
+        notify(
+            err?.data?.message ||
+                (is413
+                    ? "A imagem ficou grande demais para o servidor — tente uma imagem menor."
+                    : err?.message || "Erro ao salvar"),
+            "error",
+        );
     } finally {
         saving.value = false;
     }

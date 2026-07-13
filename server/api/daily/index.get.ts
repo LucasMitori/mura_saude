@@ -12,6 +12,10 @@ export default defineEventHandler(async (event) => {
     const to = safeDateQueryParam(query.to);
     const limitRaw = typeof query.limit === "string" ? parseInt(query.limit, 10) : 60;
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(1, limitRaw), 365) : 60;
+    // light=1 drops the per-food rows — the heaviest part of a range payload.
+    // Dashboards only need summaries/counts; reports and the day view do not
+    // pass it and keep receiving full documents.
+    const light = query.light === "1" || query.light === "true";
 
     const db = await getDatabase();
     const collection = db.collection("dailyRecords");
@@ -36,7 +40,7 @@ export default defineEventHandler(async (event) => {
     }
 
     const records = await collection
-        .find(filter)
+        .find(filter, light ? { projection: { "meals.foods": 0 } } : undefined)
         .sort({ date: -1 })
         .limit(limit)
         .toArray();

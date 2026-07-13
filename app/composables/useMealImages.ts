@@ -61,6 +61,66 @@ export function useMealImages() {
         return null;
     }
 
+    // Uploads travel as base64 JSON (+33%), and hosts like Vercel cap request
+    // bodies at ~4.5 MB — so the practical wire limit is well below the app's
+    // 5 MB cap. Compressing client-side (downscale + WebP) keeps any photo,
+    // even a 20 MB camera shot, comfortably inside every limit.
+    const COMPRESS_MAX_DIMENSION = 2560;
+    const COMPRESS_TARGET_BYTES = 2_500_000;
+
+    /** Downscale/recompress an image so it uploads reliably everywhere.
+     *  Returns the original file when it's already small enough, or a WebP
+     *  re-encode otherwise. Unsupported formats pass through untouched so
+     *  validateImageFile can report them. */
+    async function compressImageFile(file: File): Promise<File> {
+        if (!MEAL_IMAGE_ALLOWED_TYPES.includes(file.type as never)) return file;
+        if (file.size <= COMPRESS_TARGET_BYTES) return file;
+
+        const url = URL.createObjectURL(file);
+        try {
+            const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+                const i = new Image();
+                i.onload = () => resolve(i);
+                i.onerror = () => reject(new Error("Não foi possível ler a imagem"));
+                i.src = url;
+            });
+            const baseName = file.name.replace(/\.\w+$/, "") || "foto";
+            // Step quality down, then dimensions, until the target is met —
+            // even pathological images (pure noise) eventually fit.
+            let best: Blob | null = null;
+            for (const dimFactor of [1, 0.7, 0.5, 0.35]) {
+                const maxDim = COMPRESS_MAX_DIMENSION * dimFactor;
+                const scale = Math.min(
+                    1,
+                    maxDim / Math.max(img.naturalWidth, img.naturalHeight),
+                );
+                const canvas = document.createElement("canvas");
+                canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+                canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+                const ctx = canvas.getContext("2d");
+                if (!ctx) return file;
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                for (const quality of [0.85, 0.7, 0.55]) {
+                    const blob = await new Promise<Blob | null>((r) =>
+                        canvas.toBlob(r, "image/webp", quality),
+                    );
+                    if (!blob) break;
+                    if (!best || blob.size < best.size) best = blob;
+                    if (blob.size <= COMPRESS_TARGET_BYTES) {
+                        return new File([blob], `${baseName}.webp`, { type: "image/webp" });
+                    }
+                }
+            }
+            if (!best) return file;
+            return new File([best], `${baseName}.webp`, { type: "image/webp" });
+        } catch {
+            return file;
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    }
+
     function fileToDataUrl(file: File): Promise<string> {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -121,6 +181,7 @@ export function useMealImages() {
 
     return {
         validateImageFile,
+        compressImageFile,
         uploadMealImage,
         removeMealImage,
         getImageObjectUrl,

@@ -121,6 +121,20 @@ export function decodeAndValidateImage(dataUrl: unknown): DecodedImage {
     return { buffer, contentType: sniffed, size: buffer.length };
 }
 
+/** Delete every photo of one day. Used when a bulk save (Nova Entrada
+ *  Completa) replaces the day's meals wholesale — their photos must not
+ *  orphan in the gallery. */
+export async function deleteMealImagesForDate(
+    userId: string,
+    date: string,
+): Promise<number> {
+    const db = await getDatabase();
+    const res = await db
+        .collection(MEAL_IMAGES_COLLECTION)
+        .deleteMany({ userId, date });
+    return res.deletedCount;
+}
+
 /** Delete image binaries by id — used when a meal/day is deleted or a photo
  *  is replaced. Best-effort: missing ids are ignored. */
 export async function deleteMealImagesByIds(ids: string[]): Promise<number> {

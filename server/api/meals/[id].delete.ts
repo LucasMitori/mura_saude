@@ -1,9 +1,9 @@
 import { requirePermission, getDataOwnerId } from "#server/utils/roles";
 import { validateRequired, validateDate, sanitizeMongoInput } from "#server/utils/validators";
+import { getDatabase } from "#server/utils/mongodb";
 import {
     getOrCreateDailyRecord,
-    persistDailyRecord,
-    recomputeDailySummary,
+    recomputeSummaryAtomic,
 } from "#server/utils/daily-helpers";
 import { deleteMealImagesByIds } from "#server/utils/meal-images";
 
@@ -26,18 +26,23 @@ export default defineEventHandler(async (event) => {
     validateDate(date);
 
     const rec = await getOrCreateDailyRecord(userId, date);
-    const before = rec.meals.length;
     const removed = rec.meals.find((m) => m.id === id);
-    rec.meals = rec.meals.filter((m) => m.id !== id);
-    if (rec.meals.length === before) {
+    if (!removed) {
         throw createError({ statusCode: 404, message: "Meal not found" });
     }
     // Don't orphan the meal's photo binary in mealImages.
-    if (removed?.image?.id) {
+    if (removed.image?.id) {
         await deleteMealImagesByIds([removed.image.id]);
     }
-    recomputeDailySummary(rec);
-    await persistDailyRecord(rec);
+
+    // Atomic $pull removes only this meal — concurrent adds on the same day
+    // are never clobbered by a whole-array rewrite.
+    const db = await getDatabase();
+    await db.collection("dailyRecords").updateOne(
+        { userId, date },
+        { $pull: { meals: { id } as never } },
+    );
+    await recomputeSummaryAtomic(userId, date);
 
     return { success: true };
 });

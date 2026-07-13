@@ -1,9 +1,7 @@
 import { requirePermission, getDataOwnerId } from "#server/utils/roles";
 import { validateRequired, validateDate, sanitizeMongoInput } from "#server/utils/validators";
-import {
-    getOrCreateDailyRecord,
-    persistDailyRecord,
-} from "#server/utils/daily-helpers";
+import { getDatabase } from "#server/utils/mongodb";
+import { getOrCreateDailyRecord } from "#server/utils/daily-helpers";
 import { deleteMealImagesByIds } from "#server/utils/meal-images";
 
 interface DeleteImageBody {
@@ -36,8 +34,12 @@ export default defineEventHandler(async (event) => {
     }
 
     await deleteMealImagesByIds([meal.image.id]);
-    meal.image = null;
-    await persistDailyRecord(rec);
+    // Positional $set clears only this meal's image ref — no array rewrite.
+    const db = await getDatabase();
+    await db.collection("dailyRecords").updateOne(
+        { userId, date: body.date, "meals.id": mealId },
+        { $set: { "meals.$.image": null, updatedAt: new Date().toISOString() } },
+    );
 
     return { success: true };
 });

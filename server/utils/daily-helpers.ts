@@ -189,9 +189,100 @@ export async function getOrCreateDailyRecord(
 }
 
 /**
+ * Recompute the meal-derived summary fields ATOMICALLY inside MongoDB via an
+ * aggregation-pipeline update. Unlike a read→compute→write cycle, the pipeline
+ * evaluates against the document's CURRENT state under the per-document write
+ * lock — so under concurrent meal writes, whichever recompute lands last has
+ * necessarily seen every meal written before it (each writer recomputes after
+ * its own write). Measurement-derived fields (weightChange, waterPercentage)
+ * are preserved via $mergeObjects; meals don't affect them.
+ */
+export async function recomputeSummaryAtomic(
+    userId: string,
+    date: string,
+): Promise<void> {
+    const db = await getDatabase();
+    // Sum one macro across all foods of all meals, rounded to 1 decimal.
+    const macroSum = (field: string) => ({
+        $round: [
+            {
+                $sum: {
+                    $map: {
+                        input: { $ifNull: ["$meals", []] },
+                        as: "m",
+                        in: {
+                            $sum: {
+                                $map: {
+                                    input: { $ifNull: ["$$m.foods", []] },
+                                    as: "f",
+                                    in: { $ifNull: [`$$f.${field}`, 0] },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            1,
+        ],
+    });
+    const net = { $subtract: ["$$consumed", "$$burned"] };
+    const balance = { $subtract: [net, "$$goal"] };
+
+    await db.collection("dailyRecords").updateOne({ userId, date }, [
+        {
+            $set: {
+                summary: {
+                    $let: {
+                        vars: {
+                            consumed: {
+                                $round: [{ $sum: { $ifNull: ["$meals.totalCalories", []] } }, 0],
+                            },
+                            burned: {
+                                $round: [{ $ifNull: ["$workout.totalCaloriesBurned", 0] }, 0],
+                            },
+                            goal: { $ifNull: ["$caloricGoal", 2000] },
+                        },
+                        in: {
+                            $mergeObjects: [
+                                { $ifNull: ["$summary", {}] },
+                                {
+                                    totalCaloriesConsumed: "$$consumed",
+                                    totalCaloriesBurned: "$$burned",
+                                    netCalories: net,
+                                    caloricGoal: "$$goal",
+                                    caloricBalance: { $round: [balance, 0] },
+                                    isDeficit: { $lt: [balance, 0] },
+                                    deficitPercentage: {
+                                        $cond: [
+                                            { $gt: ["$$goal", 0] },
+                                            {
+                                                $round: [
+                                                    { $multiply: [{ $divide: [balance, "$$goal"] }, 100] },
+                                                    0,
+                                                ],
+                                            },
+                                            0,
+                                        ],
+                                    },
+                                    totalProtein: macroSum("protein"),
+                                    totalCarbs: macroSum("carbs"),
+                                    totalFats: macroSum("fats"),
+                                    totalFiber: macroSum("fiber"),
+                                },
+                            ],
+                        },
+                    },
+                },
+                updatedAt: new Date().toISOString(),
+            },
+        },
+    ]);
+}
+
+/**
  * Append one meal atomically via $push — unlike persistDailyRecord (which
  * replaces the whole meals array), concurrent adds can never overwrite each
- * other. The summary is recomputed from a fresh read afterwards.
+ * other. The summary recompute is also atomic (see recomputeSummaryAtomic).
  */
 export async function appendMealAndRecompute(
     userId: string,
@@ -199,18 +290,11 @@ export async function appendMealAndRecompute(
     meal: MealLite,
 ): Promise<void> {
     const db = await getDatabase();
-    const col = db.collection("dailyRecords");
-    await col.updateOne(
+    await db.collection("dailyRecords").updateOne(
         { userId, date },
-        {
-            $push: { meals: meal as unknown as never },
-            $set: { updatedAt: new Date().toISOString() },
-        },
+        { $push: { meals: meal as unknown as never } },
     );
-    const fresh = (await col.findOne({ userId, date })) as unknown as DailyRecordDoc | null;
-    if (!fresh) return;
-    recomputeDailySummary(fresh);
-    await col.updateOne({ userId, date }, { $set: { summary: fresh.summary } });
+    await recomputeSummaryAtomic(userId, date);
 }
 
 export async function persistDailyRecord(rec: DailyRecordDoc): Promise<void> {
