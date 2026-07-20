@@ -78,6 +78,11 @@ async function main() {
 
     // ============ A. FRONTEND PERFORMANCE ============
     section("A. Frontend performance");
+    // Warm up first: in dev, Vite compiles each page on first hit — that
+    // one-time compile cost is not what we're measuring.
+    await Promise.all(
+        ["/login", "/"].map((p) => fetch(`${BASE}${p}`, { headers: { accept: "text/html" } }).then((r) => r.text())),
+    );
     for (const [path, budget] of [["/login", 4000], ["/", 4000]]) {
         const t0 = performance.now();
         const res = await fetch(`${BASE}${path}`, { headers: { accept: "text/html" } });
@@ -241,10 +246,12 @@ async function main() {
     }
     // Viewer privilege boundaries
     let viewerToken = "";
+    let viewerId = "";
     {
         const { status, json } = await api("POST", "/api/auth/register",
             { name: "SecViewer", email: `viewer-${Date.now()}@test.com`, password: "ViewerStrong#1!" }, { anon: true });
         viewerToken = json?.token || "";
+        viewerId = json?.user?.id || "";
         log("Viewer registered for privilege tests", status === 200 && !!viewerToken);
     }
     if (viewerToken) {
@@ -259,6 +266,78 @@ async function main() {
         log("Viewer blocked from all write/admin surfaces (5× 403)",
             checks.every((r) => r.status === 403), checks.map((r) => r.status).join(","));
     }
+    // ===== Nutritionist role: read-only on patient data, full power ONLY on diets =====
+    if (viewerId && viewerToken) {
+        // Promote the test user to manager+nutritionist (admin action). Roles are
+        // resolved from the DB on every request, so the SAME token instantly
+        // carries the new permissions — no re-login needed.
+        const promote = await api("PUT", `/api/admin/users/${viewerId}`,
+            { role: "manager", specialty: "nutritionist" });
+        log("Admin promotes test user to nutritionist", promote.status === 200,
+            `perms=${(promote.json?.permissions || []).join(",")}`);
+
+        const asNutri = { anon: true, headers: { Authorization: `Bearer ${viewerToken}` } };
+
+        // CAN view patient data (dashboard/reports feed)
+        const reads = await Promise.all([
+            api("GET", "/api/daily?from=2026-01-01", undefined, asNutri),
+            api("GET", "/api/diets", undefined, asNutri),
+        ]);
+        log("Nutritionist CAN view dashboard data + diets", reads.every((r) => r.status === 200),
+            reads.map((r) => r.status).join(","));
+
+        // CANNOT touch patient data or any admin surface
+        const denied = await Promise.all([
+            api("POST", "/api/meals", { date: TEST_DATE, meal: { type: "snack", foods: [] } }, asNutri),
+            api("PUT", "/api/water", { date: TEST_DATE, addMl: 100 }, asNutri),
+            api("POST", "/api/measurements", { date: TEST_DATE, measurement: {} }, asNutri),
+            api("PUT", "/api/workouts", { date: TEST_DATE, workout: null }, asNutri),
+            api("DELETE", "/api/daily/aaaaaaaaaaaaaaaaaaaaaaaa", undefined, asNutri),
+            api("GET", "/api/admin/users", undefined, asNutri),
+            api("GET", "/api/admin/gallery", undefined, asNutri),
+            api("PUT", "/api/settings/login-background", { dataUrl: "x" }, asNutri),
+            api("PUT", `/api/admin/users/${viewerId}`, { role: "admin" }, asNutri),
+            api("POST", "/api/meals/x/image", { date: TEST_DATE, dataUrl: "x" }, asNutri),
+        ]);
+        log("Nutritionist blocked from ALL patient-data writes + admin surfaces (10× 403)",
+            denied.every((r) => r.status === 403), denied.map((r) => r.status).join(","));
+
+        // CAN manage diets (their own domain): create → update → activate → delete
+        const create = await api("POST", "/api/diets", {
+            name: "Dieta E2E Nutri", targetCalories: 1800,
+            meals: [{ type: "breakfast", time: "07:30", label: "Café",
+                foods: [{ name: "Ovo cozido", weightGrams: 100, calories: 146, protein: 13.3 }] }],
+        }, asNutri);
+        const dietId = create.json?.dietId || "";
+        const update = dietId ? await api("PUT", `/api/diets/${dietId}`, {
+            name: "Dieta E2E Nutri v2", targetCalories: 1900, meals: [],
+        }, asNutri) : { status: 0 };
+        const activate = dietId ? await api("POST", `/api/diets/${dietId}/activate`, { active: true }, asNutri) : { status: 0 };
+        const listAfter = await api("GET", "/api/diets", undefined, asNutri);
+        const activeOk = (listAfter.json || []).some((d) => d._id === dietId && d.active === true);
+        log("Nutritionist CAN create/update/activate diets",
+            create.status === 200 && update.status === 200 && activate.status === 200 && activeOk,
+            `create=${create.status} update=${update.status} activate=${activate.status} active=${activeOk}`);
+
+        // Diet `active` flag cannot be forged through create/update bodies
+        const forge = await api("POST", "/api/diets", { name: "Forge", active: true, meals: [] }, asNutri);
+        const forged = (await api("GET", "/api/diets", undefined, asNutri)).json || [];
+        const forgeDoc = forged.find((d) => d._id === forge.json?.dietId);
+        log("Diet `active` not forgeable via body", forge.status === 200 && forgeDoc?.active === false);
+        if (forge.json?.dietId) await api("DELETE", `/api/diets/${forge.json.dietId}`, undefined, asNutri);
+
+        const del = dietId ? await api("DELETE", `/api/diets/${dietId}`, undefined, asNutri) : { status: 0 };
+        log("Nutritionist CAN delete diets", del.status === 200);
+
+        // Demote back to plain user and confirm diet writes are gone again
+        const demote = await api("PUT", `/api/admin/users/${viewerId}`, { role: "user" });
+        const dietDenied = await api("POST", "/api/diets", { name: "x", meals: [] }, asNutri);
+        const dietReadOk = await api("GET", "/api/diets", undefined, asNutri);
+        log("Demoted user: diet write → 403, diet read stays 200",
+            demote.status === 200 && dietDenied.status === 403 && dietReadOk.status === 200,
+            `write=${dietDenied.status} read=${dietReadOk.status}`);
+    }
+
     {
         const { status } = await api("PUT", "/api/settings/login-background",
             { dataUrl: `data:image/png;base64,${"A".repeat(7 * 1024 * 1024)}` });

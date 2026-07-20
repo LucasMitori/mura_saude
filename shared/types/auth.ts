@@ -27,6 +27,8 @@ export type Permission =
     | "treinos.delete"
     | "nutrition.view"
     | "nutrition.edit"
+    | "diet.view"
+    | "diet.edit"
     | "users.manage";
 
 export interface UserProfile {

@@ -14,16 +14,20 @@ export const ALL_PERMISSIONS: Permission[] = [
     "treinos.delete",
     "nutrition.view",
     "nutrition.edit",
+    "diet.view",
+    "diet.edit",
     "users.manage",
 ];
 
-// Everyone who is logged in can VIEW the dashboard, reports, treinos and health
-// data (this is a single-patient app — viewers see the patient's data read-only).
+// Everyone who is logged in can VIEW the dashboard, reports, treinos, health
+// data and the diet plan (this is a single-patient app — viewers see the
+// patient's data read-only).
 const VIEW_PERMS: Permission[] = [
     "dashboard.view",
     "reports.view",
     "treinos.view",
     "nutrition.view",
+    "diet.view",
 ];
 
 // personal_trainer: manages workout routines (no delete — archive instead),
@@ -35,8 +39,11 @@ const TRAINER_PERMS: Permission[] = [
     "treinos.archive",
 ];
 
-// nutritionist: edits the patient's nutrition/health data, views treinos/reports.
-const NUTRITIONIST_PERMS: Permission[] = [...VIEW_PERMS, "nutrition.edit"];
+// nutritionist: STRICTLY read-only on the patient's data (dashboard/reports/
+// treinos/health are view-only). Their sole write capability is the diet
+// domain — building and managing diet plans on the /diet page. They can never
+// touch meals, measurements, water, workouts, users or admin settings.
+const NUTRITIONIST_PERMS: Permission[] = [...VIEW_PERMS, "diet.edit"];
 
 export function resolvePermissions(
     role: UserRole | string | null | undefined,

@@ -179,7 +179,7 @@ function roleDescription(role: UserRole, specialty: ManagerSpecialty | null): st
         if (specialty === "personal_trainer")
             return "Pode criar, editar e arquivar treinos; vê relatórios e dados (somente leitura).";
         if (specialty === "nutritionist")
-            return "Pode editar dados de saúde/alimentação; vê treinos e relatórios (somente leitura).";
+            return "Monta e gerencia dietas na página Dietas; todo o resto (dashboard, relatórios, treinos, dados de saúde) é somente leitura — não edita, cria ou exclui nada do paciente.";
         return "Selecione a especialidade.";
     }
     return "Somente leitura — vê o conteúdo mas não pode alterar nada.";

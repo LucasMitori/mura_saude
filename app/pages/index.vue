@@ -326,6 +326,49 @@
             </v-card-text>
         </v-card>
 
+        <!-- Active diet plan (built by the nutritionist on /diet) -->
+        <v-card v-if="activeDiet" class="mb-3 active-diet-card">
+            <v-card-title class="d-flex align-center flex-wrap ga-2">
+                <v-icon start color="success">mdi-food-apple</v-icon>
+                Dieta Atual — {{ activeDiet.name }}
+                <v-chip color="success" variant="flat" size="x-small" class="font-weight-bold">
+                    Ativa
+                </v-chip>
+                <v-spacer />
+                <v-btn color="primary" variant="text" size="small" to="/diet">
+                    Ver plano completo
+                    <v-icon end size="16">mdi-arrow-right</v-icon>
+                </v-btn>
+            </v-card-title>
+            <v-divider />
+            <v-card-text>
+                <div class="d-flex flex-wrap ga-2 align-center">
+                    <v-chip color="warning" variant="tonal" size="small">
+                        <v-icon start size="14">mdi-fire</v-icon>
+                        {{ activeDiet.totalCalories }} kcal planejadas
+                    </v-chip>
+                    <v-chip v-if="activeDiet.targetCalories" color="info" variant="tonal" size="small">
+                        <v-icon start size="14">mdi-target</v-icon>
+                        Meta {{ activeDiet.targetCalories }} kcal
+                    </v-chip>
+                    <v-chip variant="tonal" size="small">
+                        <v-icon start size="14">mdi-silverware-fork-knife</v-icon>
+                        {{ activeDiet.meals.length }} refeições
+                    </v-chip>
+                    <v-chip variant="tonal" size="small">
+                        P {{ activeDiet.totalProtein }}g · C {{ activeDiet.totalCarbs }}g ·
+                        G {{ activeDiet.totalFats }}g
+                    </v-chip>
+                    <span class="text-caption text-medium-emphasis ml-auto">
+                        por {{ activeDiet.createdByName }}
+                    </span>
+                </div>
+                <p v-if="activeDiet.description" class="text-caption text-medium-emphasis mt-2 mb-0">
+                    {{ activeDiet.description }}
+                </p>
+            </v-card-text>
+        </v-card>
+
         <!-- Entries Table -->
         <v-card class="mb-3">
             <v-card-title class="d-flex align-center">
@@ -983,6 +1026,22 @@ const authStore = useAuthStore();
 
 const loading = ref(false);
 const allRecords = ref<DailyRecord[]>([]);
+// Active diet plan for the "Dieta Atual" card (lean local type — only the
+// fields the card renders).
+interface ActiveDiet {
+    _id: string;
+    name: string;
+    description: string;
+    targetCalories: number;
+    totalCalories: number;
+    totalProtein: number;
+    totalCarbs: number;
+    totalFats: number;
+    meals: unknown[];
+    active: boolean;
+    createdByName: string;
+}
+const activeDiet = ref<ActiveDiet | null>(null);
 const today = format(new Date(), "yyyy-MM-dd");
 const todayFormatted = format(new Date(), "EEEE, dd 'de' MMMM 'de' yyyy", {
     locale: ptBR,
@@ -1130,6 +1189,16 @@ async function loadAllData() {
         allRecords.value = [];
     } finally {
         loading.value = false;
+    }
+    // Non-fatal: the "Dieta Atual" card simply hides when there is no active
+    // plan or the fetch fails.
+    try {
+        const diets = await $fetch<ActiveDiet[]>("/api/diets", {
+            headers: authStore.authHeaders,
+        });
+        activeDiet.value = diets.find((d) => d.active) || null;
+    } catch {
+        activeDiet.value = null;
     }
 }
 // ===== Today's Data =====

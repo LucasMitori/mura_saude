@@ -926,9 +926,14 @@
                             }}{{ Math.abs(summaryData.caloricBalance) }}
                         </p>
                         <p class="text-h6 mb-4">kcal</p>
+                        <!-- variant="flat" (solid) — the default tonal chip is
+                             translucent and unreadable on this dark card in
+                             the light theme. -->
                         <v-chip
                             :color="summaryData.isDeficit ? 'success' : 'error'"
+                            variant="flat"
                             size="large"
+                            class="font-weight-bold balance-chip"
                         >
                             {{
                                 summaryData.isDeficit
@@ -1350,8 +1355,9 @@
                     <div class="text-center pa-4">
                         <v-chip
                             :color="summaryData.isDeficit ? 'success' : 'error'"
+                            variant="flat"
                             size="x-large"
-                            class="text-h6"
+                            class="text-h6 font-weight-bold"
                         >
                             {{
                                 summaryData.isDeficit ? "DÉFICIT" : "SUPERÁVIT"
@@ -1991,5 +1997,10 @@ function openReviewDialog() {
 }
 .mini-metric--green {
     color: #66bb6a;
+}
+/* Extra separation from the dark green/red card behind it. */
+.balance-chip {
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 </style>

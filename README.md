@@ -134,6 +134,20 @@ Photos live in the `mealImages` collection with a **MongoDB TTL index** (`create
 ### Workouts
 - `PUT  /api/workouts` — replace full workout (`null` to clear)
 
+### Diet plans (nutritionist domain)
+- `GET  /api/diets` — list plans (any logged-in user, `diet.view`)
+- `POST /api/diets` — create (`diet.edit`: nutritionist + admin)
+- `PUT  /api/diets/:id` / `DELETE /api/diets/:id` — update/delete (`diet.edit`)
+- `POST /api/diets/:id/activate` — mark the single active plan (shown on the dashboard)
+
+Diets are built from a local **Brazilian TACO food table** (70+ staples with per-100g macros, accent-insensitive search, served ahead of Open Food Facts in `/api/nutrition/search`). Totals and macros are always recomputed server-side; the `active` flag can only be set through the activate endpoint.
+
+### Roles
+- **Admin** — everything.
+- **Personal Trainer** (`manager` + specialty) — manages treinos; views the rest.
+- **Nutricionista** (`manager` + specialty) — **strictly read-only on all patient data** (dashboard, reports, treinos, health records); their only write capability is the **Dietas** page (`diet.edit`). No admin pages, no user management, no deletes outside their own diet plans. Assign it in `/admin/users`.
+- **Usuário** — read-only viewer.
+
 ### Health
 - `GET  /api/health` — public
 
@@ -145,6 +159,7 @@ Photos live in the `mealImages` collection with a **MongoDB TTL index** (`create
 - `/meals/quick` — **fast single-meal add per period** ⭐ (with photo upload)
 - `/daily/new` — full-day entry (admin)
 - `/daily/:date` — daily detail w/ per-meal edit & delete (+ photo thumbnails)
+- `/diet` — **diet builder** (nutritionist/admin edit; everyone views; active plan feeds the dashboard card)
 - `/admin/users` — user role management (admin)
 - `/admin/gallery` — **meal-photo gallery in day folders** with storage usage and per-photo / per-day delete (admin)
 - `/admin/settings` — app customization (admin): login-page background image (**permanent** — exempt from the 30-day photo TTL)

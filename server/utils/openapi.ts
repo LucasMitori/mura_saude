@@ -65,6 +65,7 @@ export function getOpenApiSpec() {
             { name: "Water", description: "Water intake" },
             { name: "Workout", description: "A day's logged workout" },
             { name: "Routines", description: "Reusable workout routines (treinos)" },
+            { name: "Diets", description: "Diet plans built by the nutritionist (diet.edit); viewable by everyone (diet.view)" },
             { name: "Exercises", description: "Exercise search (wger + local)" },
             { name: "Nutrition", description: "Food search (Open Food Facts)" },
             { name: "Admin", description: "User role management" },
@@ -148,6 +149,17 @@ export function getOpenApiSpec() {
             },
             "/api/routines/{id}/archive": {
                 post: { tags: ["Routines"], summary: "Archive/restore a routine", description: authPerm("treinos.archive") + " Body: `{ archived: boolean }`.", security: bearer, parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": ok("OK"), "403": ok("Forbidden") } },
+            },
+            "/api/diets": {
+                get: { tags: ["Diets"], summary: "List diet plans (active first)", description: authPerm("diet.view"), security: bearer, responses: { "200": jsonObj } },
+                post: { tags: ["Diets"], summary: "Create a diet plan", description: authPerm("diet.edit") + " Nutritionist + admin. Fields are explicitly mapped; totals recomputed server-side; `active` can only be set via the activate endpoint.", security: bearer, responses: { "200": ok("Created — returns { dietId }"), "400": ok("Validation error"), "403": ok("Forbidden") } },
+            },
+            "/api/diets/{id}": {
+                put: { tags: ["Diets"], summary: "Update a diet plan", description: authPerm("diet.edit"), security: bearer, parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": ok("Updated"), "403": ok("Forbidden"), "404": ok("Not found") } },
+                delete: { tags: ["Diets"], summary: "Delete a diet plan", description: authPerm("diet.edit"), security: bearer, parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": ok("Deleted"), "403": ok("Forbidden"), "404": ok("Not found") } },
+            },
+            "/api/diets/{id}/activate": {
+                post: { tags: ["Diets"], summary: "Activate/deactivate a plan (max one active)", description: authPerm("diet.edit") + " Body: `{ active: boolean }`. Activating one plan deactivates all others; the active plan appears on the dashboard.", security: bearer, parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": ok("OK"), "403": ok("Forbidden"), "404": ok("Not found") } },
             },
             "/api/exercises/search": {
                 get: { tags: ["Exercises"], summary: "Search exercises (local PT + wger)", security: bearer, parameters: [{ name: "q", in: "query", required: true, schema: { type: "string", example: "supino" } }], responses: { "200": jsonObj } },

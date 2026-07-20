@@ -144,6 +144,12 @@
                     title="Treinos"
                     to="/workout"
                 />
+                <v-list-item
+                    v-if="authStore.can('diet.view')"
+                    prepend-icon="mdi-food-apple"
+                    title="Dietas"
+                    to="/diet"
+                />
                 <v-list-subheader v-if="canEditAnything">
                     Gerenciar
                 </v-list-subheader>
@@ -297,6 +303,7 @@ const canEditAnything = computed(
         authStore.can("nutrition.edit") ||
         authStore.can("treinos.create") ||
         authStore.can("treinos.edit") ||
+        authStore.can("diet.edit") ||
         authStore.can("users.manage"),
 );
 
