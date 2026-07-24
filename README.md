@@ -145,8 +145,24 @@ Diets are built from a local **Brazilian TACO food table** (70+ staples with per
 ### Roles
 - **Admin** — everything.
 - **Personal Trainer** (`manager` + specialty) — manages treinos; views the rest.
-- **Nutricionista** (`manager` + specialty) — **strictly read-only on all patient data** (dashboard, reports, treinos, health records); their only write capability is the **Dietas** page (`diet.edit`). No admin pages, no user management, no deletes outside their own diet plans. Assign it in `/admin/users`.
-- **Usuário** — read-only viewer.
+- **Nutricionista** (`manager` + specialty) — **strictly read-only on all patient data** (dashboard, reports, treinos, health records); their only write capability is the **Dietas** page (`diet.edit`); views exam documents targeted to them. No admin pages, no user management, no deletes outside their own diet plans.
+- **Médico** (`manager` + specialty) — **pure read-only**: views the dashboard/reports and the exam documents targeted to the doctor (`exams.view`). Edits/creates/deletes **nothing** — not even diets. The difference from the nutricionista is exactly that (no `diet.edit`), plus documents are audience-targeted.
+- **Usuário** — read-only viewer (no exam access).
+
+Assign roles/specialties in `/admin/users`. When uploading an exam the admin picks its **audience** (médico, nutricionista, or both) — each professional only sees the documents marked for them; the admin always sees everything.
+
+### Exams / Resultados (sensitive medical documents)
+- `GET  /api/exams` — list document metadata (`exams.view`: admin + nutritionist)
+- `POST /api/exams` — upload (`exams.edit`: admin) — `multipart/form-data` incl. `audience` (`medico`/`nutritionist`), stored in **GridFS** (50 MB cap; ~4.5 MB on Vercel)
+- `GET  /api/exams/:id` — stream/preview (`exams.view`) — see security note below
+- `PUT  /api/exams/:id` — edit metadata (`exams.edit`) · `DELETE /api/exams/:id` — delete (`exams.edit`)
+
+**Document-serving security** (these are medical files): only PDF/image/plain-text stream **inline**; every other type — and any `?download=1` — is a forced **attachment** as `application/octet-stream`, so an uploaded `.html`/`.svg` can never execute in our origin. All file responses carry `X-Content-Type-Options: nosniff`, a `default-src 'none'; sandbox` CSP, and `Cache-Control: no-store`. Files are never public — every read requires a Bearer token with `exams.view`.
+
+### Privacy
+- `GET  /api/settings/privacy` — read `{ hideWeight }` · `PUT` (admin) — toggle it
+
+When **hideWeight** is on, `/api/daily` and `/api/measurements` **redact the patient's weight to `null` server-side** for plain `user` viewers (they see "—", like a banking app hiding a balance). Admin and managers (nutritionist / trainer) always see the real value. The hiding is enforced on the server — the redacted value never reaches the browser, so it can't be revealed by tampering.
 
 ### Health
 - `GET  /api/health` — public
@@ -160,7 +176,10 @@ Diets are built from a local **Brazilian TACO food table** (70+ staples with per
 - `/daily/new` — full-day entry (admin)
 - `/daily/:date` — daily detail w/ per-meal edit & delete (+ photo thumbnails)
 - `/diet` — **diet builder** (nutritionist/admin edit; everyone views; active plan feeds the dashboard card)
+- `/exams` — **Exames & Resultados**: secure medical-document vault with in-app PDF/image preview, upload, download (admin uploads/deletes; nutritionist views)
 - `/admin/users` — user role management (admin)
+- `/admin/audit` — **registro de auditoria**: who accessed which document, logins, role/privacy changes (admin)
+- `/admin/settings` — login background + **weight-privacy switch** (admin)
 - `/admin/gallery` — **meal-photo gallery in day folders** with storage usage and per-photo / per-day delete (admin)
 - `/admin/settings` — app customization (admin): login-page background image (**permanent** — exempt from the 30-day photo TTL)
 
@@ -169,9 +188,16 @@ Diets are built from a local **Brazilian TACO food table** (70+ staples with per
 **Authentication & authorization**
 - JWT secret required (no insecure fallback), signed with `issuer` claim; forged/expired tokens → 401
 - Roles/permissions are resolved from the **database on every request** — the token only proves identity, so a tampered token or stale role can never escalate privileges
+- **Token revocation**: every token carries a `tv` (token version) checked against the user record. Changing the password — or hitting "sair de todos os dispositivos" (`POST /api/auth/logout-all`) — bumps it and **instantly invalidates every previously issued token**, closing the "stolen token survives a password change" gap
+- **Per-account lockout**: 5 failed logins lock the account for 15 minutes (`429`), independent of IP. This is what stops a targeted attack, since an IP limit alone is defeated by rotating addresses or hitting different serverless instances
 - Login error is time-equalized (dummy bcrypt compare) to avoid email enumeration
 - Registration never auto-promotes to admin (admin is seeded only); strong-password rules enforced server-side
-- Rate limiting on `/auth/login` (8/min — brute force → 429), `/auth/register`, `/auth/seed-admin`
+- Rate limiting on `/auth/login` (12/min per IP), `/auth/register`, `/auth/seed-admin`; the seed secret is compared in **constant time** (`timingSafeEqual`)
+- **The rate limiter does not trust `X-Forwarded-For`** — a client can forge it. It uses platform-set headers (`x-vercel-forwarded-for`, `cf-connecting-ip`), or the nearest proxy hop only when `TRUST_PROXY=true`, otherwise the raw socket address
+
+**Auditability**
+- Every sensitive action is recorded in an append-only `auditLog`: exam **view / download / upload / delete**, login success/failure/lockout, password changes, session revocations, role changes and privacy toggles — with actor, role, IP, user-agent and timestamp
+- Viewable by the admin at **`/admin/audit`** (filterable); entries auto-expire after 180 days via a MongoDB TTL index. There is no API to edit or delete entries
 
 **Injection & input**
 - MongoDB query input sanitized (rejects `$`/`.` keys) → NoSQL injection neutralized; login body is type-checked (objects rejected)

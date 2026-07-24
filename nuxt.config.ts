@@ -178,6 +178,7 @@ export default defineNuxtConfig({
         "/meals/**": { ssr: false },
         "/workout/**": { ssr: false },
         "/diet/**": { ssr: false },
+        "/exams/**": { ssr: false },
         "/admin/**": { ssr: false },
     },
 

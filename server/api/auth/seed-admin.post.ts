@@ -1,9 +1,24 @@
+import { timingSafeEqual } from "node:crypto";
 import { getDatabase } from "#server/utils/mongodb";
 import { hashPassword } from "#server/utils/auth";
 import { rateLimit } from "#server/utils/rate-limit";
 
 interface Body {
     secret?: string;
+}
+
+/** Constant-time compare so the secret can't be recovered byte-by-byte by
+ *  timing the response. Length differences are handled without leaking. */
+function secretMatches(provided: unknown, expected: unknown): boolean {
+    if (typeof provided !== "string" || typeof expected !== "string") return false;
+    const a = Buffer.from(provided, "utf8");
+    const b = Buffer.from(expected, "utf8");
+    if (a.length !== b.length) {
+        // Still burn a comparison so the timing stays flat.
+        timingSafeEqual(b, b);
+        return false;
+    }
+    return timingSafeEqual(a, b);
 }
 
 export default defineEventHandler(async (event) => {
@@ -23,7 +38,7 @@ export default defineEventHandler(async (event) => {
     }
 
     const body = await readBody<Body>(event);
-    if (!body?.secret || body.secret !== jwtSecret) {
+    if (!secretMatches(body?.secret, jwtSecret)) {
         throw createError({ statusCode: 403, message: "Forbidden" });
     }
 

@@ -28,8 +28,20 @@ export async function verifyPassword(
     return bcrypt.compare(password, hash);
 }
 
-export function generateToken(userId: string, email: string, role: string): string {
-    return jwt.sign({ userId, email, role }, requireJwtSecret(), {
+/**
+ * `tv` (token version) is the revocation handle: it is compared against the
+ * user's stored `tokenVersion` on every request (see getAuthContext). Bumping
+ * that counter — on password change or "sair de todos os dispositivos" —
+ * instantly invalidates every token ever issued for the account, which a
+ * password change alone could not do.
+ */
+export function generateToken(
+    userId: string,
+    email: string,
+    role: string,
+    tokenVersion = 0,
+): string {
+    return jwt.sign({ userId, email, role, tv: tokenVersion }, requireJwtSecret(), {
         expiresIn: TOKEN_TTL,
         issuer: "mura-saude",
     });
@@ -39,6 +51,7 @@ export interface AuthPayload {
     userId: string;
     email: string;
     role?: string;
+    tv?: number;
 }
 
 export function verifyToken(token: string): AuthPayload {

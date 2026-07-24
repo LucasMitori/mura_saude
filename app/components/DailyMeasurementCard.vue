@@ -85,8 +85,13 @@ function num(x: unknown): number | undefined {
 
 const items = computed(() => {
     const d = (props.entry.data ?? {}) as Record<string, unknown>;
+    // Weight redacted by the privacy setting arrives as { value: null, hidden: true }.
+    const weightHidden =
+        !!d.weight && typeof d.weight === "object" && (d.weight as { hidden?: boolean }).hidden;
     const all = [
-        { label: "Peso", value: num(d.weight), unit: "kg", icon: "mdi-weight-kilogram", color: "primary" },
+        weightHidden
+            ? { label: "Peso", value: "—", unit: "", icon: "mdi-eye-off", color: "grey" }
+            : { label: "Peso", value: num(d.weight), unit: "kg", icon: "mdi-weight-kilogram", color: "primary" },
         { label: "IMC", value: num(d.bmi), unit: "", icon: "mdi-human", color: "info" },
         { label: "Gordura", value: num(d.bodyFatPercentage), unit: "%", icon: "mdi-water-percent", color: "orange" },
         { label: "Massa Muscular", value: num(d.muscleMass), unit: "kg", icon: "mdi-arm-flex", color: "red" },

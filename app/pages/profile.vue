@@ -90,6 +90,31 @@
                     </v-card-text>
                 </v-card>
 
+                <v-card class="mb-3">
+                    <v-card-title class="d-flex align-center">
+                        <v-icon start>mdi-shield-key</v-icon>
+                        Segurança
+                    </v-card-title>
+                    <v-divider />
+                    <v-card-text>
+                        <p class="text-caption text-medium-emphasis mb-3">
+                            Encerra a sessão em <strong>todos os dispositivos</strong>
+                            (inclusive este). Use se perdeu um aparelho ou suspeita
+                            que alguém tem acesso à sua conta.
+                        </p>
+                        <v-btn
+                            color="warning"
+                            variant="tonal"
+                            block
+                            prepend-icon="mdi-logout-variant"
+                            :loading="loading.logoutAll"
+                            @click="confirmLogoutAll = true"
+                        >
+                            Sair de todos os dispositivos
+                        </v-btn>
+                    </v-card-text>
+                </v-card>
+
                 <v-card>
                     <v-card-title class="d-flex align-center">
                         <v-icon start>mdi-information</v-icon>
@@ -255,6 +280,28 @@
             </v-col>
         </v-row>
 
+        <v-dialog v-model="confirmLogoutAll" max-width="440">
+            <v-card>
+                <v-card-title>Sair de todos os dispositivos?</v-card-title>
+                <v-card-text>
+                    Todas as sessões serão encerradas imediatamente, inclusive
+                    esta. Você precisará fazer login novamente.
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn variant="text" @click="confirmLogoutAll = false">Cancelar</v-btn>
+                    <v-btn
+                        color="warning"
+                        variant="flat"
+                        :loading="loading.logoutAll"
+                        @click="doLogoutEverywhere"
+                    >
+                        Encerrar sessões
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
         <v-snackbar
             v-model="snackbar.show"
             :color="snackbar.color"
@@ -292,7 +339,21 @@ const showCurrent = ref(false);
 const showNew = ref(false);
 const showConfirm = ref(false);
 
-const loading = ref({ name: false, avatar: false, password: false });
+const loading = ref({ name: false, avatar: false, password: false, logoutAll: false });
+const confirmLogoutAll = ref(false);
+
+async function doLogoutEverywhere() {
+    loading.value.logoutAll = true;
+    try {
+        await authStore.logoutEverywhere();
+        await navigateTo("/login");
+    } catch (e) {
+        notify(getErr(e), "error");
+    } finally {
+        loading.value.logoutAll = false;
+        confirmLogoutAll.value = false;
+    }
+}
 const snackbar = ref({ show: false, message: "", color: "success" });
 
 function notify(message: string, color: "success" | "error" | "info" = "success") {

@@ -157,6 +157,7 @@ const roleOptions = [
 const specialtyOptions = [
     { value: "personal_trainer", label: "Personal Trainer" },
     { value: "nutritionist", label: "Nutricionista" },
+    { value: "medico", label: "Médico" },
 ];
 
 function roleLabel(u: { role: UserRole; specialty?: ManagerSpecialty | null }): string {
@@ -164,6 +165,7 @@ function roleLabel(u: { role: UserRole; specialty?: ManagerSpecialty | null }): 
     if (u.role === "manager") {
         if (u.specialty === "personal_trainer") return "Personal Trainer";
         if (u.specialty === "nutritionist") return "Nutricionista";
+        if (u.specialty === "medico") return "Médico";
         return "Manager";
     }
     return "Usuário";
@@ -179,7 +181,9 @@ function roleDescription(role: UserRole, specialty: ManagerSpecialty | null): st
         if (specialty === "personal_trainer")
             return "Pode criar, editar e arquivar treinos; vê relatórios e dados (somente leitura).";
         if (specialty === "nutritionist")
-            return "Monta e gerencia dietas na página Dietas; todo o resto (dashboard, relatórios, treinos, dados de saúde) é somente leitura — não edita, cria ou exclui nada do paciente.";
+            return "Monta e gerencia dietas na página Dietas e vê os exames marcados para o nutricionista; todo o resto é somente leitura — não edita, cria ou exclui nada do paciente.";
+        if (specialty === "medico")
+            return "Somente leitura: vê o dashboard, relatórios e os exames marcados para o médico. Não edita, cria ou exclui nada — nem dietas.";
         return "Selecione a especialidade.";
     }
     return "Somente leitura — vê o conteúdo mas não pode alterar nada.";

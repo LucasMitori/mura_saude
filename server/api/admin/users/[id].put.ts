@@ -1,10 +1,11 @@
 import { requirePermission, toObjectIdOrThrow } from "#server/utils/roles";
 import { getDatabase } from "#server/utils/mongodb";
 import { sanitizeMongoInput } from "#server/utils/validators";
+import { writeAudit } from "#server/utils/audit";
 import { resolvePermissions } from "../../../../shared/permissions";
 
 const ROLES = ["admin", "manager", "user"];
-const SPECIALTIES = ["personal_trainer", "nutritionist"];
+const SPECIALTIES = ["personal_trainer", "nutritionist", "medico"];
 
 // PUT /api/admin/users/:id  body: { role, specialty? } — change a user's role.
 // users.manage permission required (admin only). The role is the ONLY way to
@@ -25,10 +26,10 @@ export default defineEventHandler(async (event) => {
         if (typeof body.specialty !== "string" || !SPECIALTIES.includes(body.specialty)) {
             throw createError({
                 statusCode: 400,
-                message: "Selecione a especialidade do manager (personal trainer ou nutricionista)",
+                message: "Selecione a especialidade do manager (personal trainer, nutricionista ou médico)",
             });
         }
-        specialty = body.specialty as "personal_trainer" | "nutritionist";
+        specialty = body.specialty as "personal_trainer" | "nutritionist" | "medico";
     }
 
     // Guard: an admin can't change their own role (prevents self-lockout).
@@ -54,6 +55,13 @@ export default defineEventHandler(async (event) => {
     await users.updateOne(
         { _id: id },
         { $set: { role, specialty, updatedAt: new Date() } },
+    );
+
+    await writeAudit(
+        event,
+        { userId: ctx.userId, email: ctx.email, role: ctx.role },
+        "admin.roleChanged",
+        { targetUserId: id.toString(), from: target.role ?? null, to: role, specialty },
     );
 
     return { success: true, role, specialty, permissions: resolvePermissions(role, specialty) };

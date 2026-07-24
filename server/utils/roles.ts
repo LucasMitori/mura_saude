@@ -32,13 +32,30 @@ export async function getAuthContext(event: H3Event): Promise<AuthContext> {
     const auth = getAuthUser(event); // verifies JWT signature + issuer
     const oid = toObjectIdOrThrow(auth.userId, 401);
 
+    // The auth-session middleware already loaded (and revocation-checked) this
+    // user for the request — reuse it instead of querying again.
+    const cached = event.context.sessionUser as Record<string, unknown> | undefined;
     const db = await getDatabase();
-    const user = await db
-        .collection("users")
-        .findOne({ _id: oid }, { projection: { role: 1, specialty: 1, email: 1 } });
+    const user =
+        cached ??
+        (await db
+            .collection("users")
+            .findOne(
+                { _id: oid },
+                { projection: { role: 1, specialty: 1, email: 1, tokenVersion: 1 } },
+            ));
 
     if (!user) {
         throw createError({ statusCode: 401, message: "User no longer exists" });
+    }
+
+    // Defence in depth: the middleware enforces this centrally, but repeat the
+    // check here so a direct getAuthContext call is never trusted blindly.
+    if (Number(auth.tv || 0) !== Number(user.tokenVersion || 0)) {
+        throw createError({
+            statusCode: 401,
+            message: "Sessão expirada — faça login novamente",
+        });
     }
 
     const role = normalizeRole(user.role);

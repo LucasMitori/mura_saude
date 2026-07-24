@@ -1,10 +1,13 @@
 import { getDatabase } from "#server/utils/mongodb";
-import { getAuthUser } from "#server/utils/auth";
-import { getAdminUserId } from "#server/utils/roles";
+import { requirePermission, getAdminUserId } from "#server/utils/roles";
 import { safeDateQueryParam } from "#server/utils/validators";
+import { shouldHideWeight, redactWeight } from "#server/utils/privacy";
 
 export default defineEventHandler(async (event) => {
-    const auth = getAuthUser(event);
+    const ctx = await requirePermission(event, "dashboard.view");
+    // Plain viewers get the patient's weight redacted when the privacy toggle
+    // is on. Resolved once server-side; the real value never reaches them.
+    const hideWeight = await shouldHideWeight(ctx);
 
     const query = getQuery(event);
     const date = safeDateQueryParam(query.date);
@@ -21,14 +24,15 @@ export default defineEventHandler(async (event) => {
     const collection = db.collection("dailyRecords");
 
     const adminUserId = await getAdminUserId();
-    const targetUserId = adminUserId || auth.userId;
+    const targetUserId = adminUserId || ctx.userId;
 
     if (date) {
         const record = await collection.findOne({ userId: targetUserId, date });
         if (!record) {
             throw createError({ statusCode: 404, message: "Record not found" });
         }
-        return { ...record, _id: record._id.toString() };
+        const out = { ...record, _id: record._id.toString() };
+        return hideWeight ? redactWeight(out) : out;
     }
 
     const filter: Record<string, unknown> = { userId: targetUserId };
@@ -45,5 +49,8 @@ export default defineEventHandler(async (event) => {
         .limit(limit)
         .toArray();
 
-    return records.map((r) => ({ ...r, _id: r._id.toString() }));
+    return records.map((r) => {
+        const out = { ...r, _id: r._id.toString() };
+        return hideWeight ? redactWeight(out) : out;
+    });
 });

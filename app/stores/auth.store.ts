@@ -82,19 +82,35 @@ export const useAuthStore = defineStore("auth", {
             this.loading = true;
             this.error = null;
             try {
-                const user = await $fetch<UserProfile>("/api/auth/me", {
+                const res = await $fetch<UserProfile & { token?: string }>("/api/auth/me", {
                     method: "PUT",
                     body: update,
                     headers: this.authHeaders,
                 });
-                this.user = user;
+                // A password change revokes every existing token; the server
+                // hands back a fresh one so THIS device stays signed in.
+                const { token, ...user } = res;
+                if (token) this.token = token;
+                this.user = user as UserProfile;
                 this.persistAuth();
-                return user;
+                return this.user;
             } catch (e: unknown) {
                 this.error = this.extractError(e);
                 throw e;
             } finally {
                 this.loading = false;
+            }
+        },
+
+        /** Revoke every session of this account (all devices), then sign out. */
+        async logoutEverywhere() {
+            try {
+                await $fetch("/api/auth/logout-all", {
+                    method: "POST",
+                    headers: this.authHeaders,
+                });
+            } finally {
+                this.logout();
             }
         },
 

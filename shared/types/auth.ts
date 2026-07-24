@@ -13,7 +13,7 @@ export interface UserLogin {
 export type UserRole = "admin" | "manager" | "user";
 
 // A manager's professional specialty (only meaningful when role === "manager").
-export type ManagerSpecialty = "personal_trainer" | "nutritionist";
+export type ManagerSpecialty = "personal_trainer" | "nutritionist" | "medico";
 
 // Granular capabilities. Pages declare the permission they need; the server
 // enforces them. NEVER trust a permission/role sent by the client.
@@ -29,6 +29,8 @@ export type Permission =
     | "nutrition.edit"
     | "diet.view"
     | "diet.edit"
+    | "exams.view"
+    | "exams.edit"
     | "users.manage";
 
 export interface UserProfile {

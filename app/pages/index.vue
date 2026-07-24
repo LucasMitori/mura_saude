@@ -53,13 +53,21 @@
                                 Peso Atual
                             </p>
                             <p class="text-h5 font-weight-bold">
-                                {{
-                                    latestWeight
-                                        ? latestWeight.toFixed(1) + " kg"
-                                        : "--"
-                                }}
+                                <template v-if="weightHidden">
+                                    <v-icon size="18" class="mr-1">mdi-eye-off</v-icon>—
+                                </template>
+                                <template v-else>
+                                    {{
+                                        latestWeight
+                                            ? latestWeight.toFixed(1) + " kg"
+                                            : "--"
+                                    }}
+                                </template>
                             </p>
-                            <p v-if="weightTrend !== null" class="text-caption">
+                            <p v-if="weightHidden" class="text-caption text-medium-emphasis">
+                                Peso oculto
+                            </p>
+                            <p v-else-if="weightTrend !== null" class="text-caption">
                                 <v-icon
                                     size="14"
                                     :color="
@@ -1253,17 +1261,25 @@ const todayMacros = computed(() => {
 });
 
 // ===== Weight Data =====
+// True when the server redacted weight for this (viewer) caller — the privacy
+// toggle is on. The dashboard then shows "—" instead of a number.
+const weightHidden = computed(() =>
+    allRecords.value.some((r) => (r as { weightHidden?: boolean }).weightHidden),
+);
+
 const latestWeight = computed(() => {
     for (const record of [...allRecords.value].sort((a, b) =>
         b.date.localeCompare(a.date),
     )) {
         const measurements = record.bodyMeasurements as
-            | Array<{ time: string; data: { weight: { value: number } } }>
+            | Array<{ time: string; data: { weight: { value: number | null } } }>
             | undefined;
         if (measurements && measurements.length > 0) {
             const morning = measurements.find((m) => m.time === "morning");
-            if (morning) return morning.data.weight.value;
-            return measurements[0]!.data.weight.value;
+            const w = morning
+                ? morning.data.weight.value
+                : measurements[0]!.data.weight.value;
+            return typeof w === "number" ? w : null;
         }
     }
     return null;
@@ -1280,9 +1296,8 @@ const weightTrend = computed(() => {
             | undefined;
         if (m && m.length > 0) {
             const morning = m.find((x) => x.time === "morning");
-            weights.push(
-                morning ? morning.data.weight.value : m[0]!.data.weight.value,
-            );
+            const w = morning ? morning.data.weight.value : m[0]!.data.weight.value;
+            if (typeof w === "number") weights.push(w);
         }
     }
     if (weights.length < 2) return null;
@@ -1379,11 +1394,12 @@ const weightChartData = computed(() => {
             | Array<{ time: string; data: { weight: { value: number } } }>
             | undefined;
         if (m && m.length > 0) {
-            labels.push(formatDateShort(r.date));
             const morning = m.find((x) => x.time === "morning");
-            data.push(
-                morning ? morning.data.weight.value : m[0]!.data.weight.value,
-            );
+            const w = morning ? morning.data.weight.value : m[0]!.data.weight.value;
+            if (typeof w === "number") {
+                labels.push(formatDateShort(r.date));
+                data.push(w);
+            }
         }
     }
 

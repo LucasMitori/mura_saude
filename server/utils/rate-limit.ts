@@ -7,16 +7,32 @@ interface RateBucket {
 
 const buckets = new Map<string, RateBucket>();
 
+/**
+ * Resolve the client IP for rate limiting WITHOUT trusting spoofable input.
+ *
+ * `X-Forwarded-For` is attacker-controlled unless a trusted proxy sets it, and
+ * taking its left-most entry (the classic mistake) lets anyone bypass every
+ * limit by sending a random value per request. So we only accept:
+ *   1. platform headers that the edge overwrites and a client cannot forge, then
+ *   2. the LAST X-Forwarded-For hop (the one our nearest trusted proxy appended)
+ *      — and only when TRUST_PROXY is explicitly enabled, then
+ *   3. the raw socket address, which cannot be spoofed.
+ */
 function getClientId(event: H3Event): string {
-    const fwd =
-        getHeader(event, "x-forwarded-for") ||
-        getHeader(event, "x-real-ip") ||
+    const platform =
+        getHeader(event, "x-vercel-forwarded-for") ||
+        getHeader(event, "cf-connecting-ip") ||
         "";
-    const ip =
-        (fwd.split(",")[0] || "").trim() ||
-        event.node.req.socket?.remoteAddress ||
-        "unknown";
-    return ip;
+    if (platform) return platform.trim();
+
+    if (process.env.TRUST_PROXY === "true") {
+        const fwd = getHeader(event, "x-forwarded-for") || "";
+        const hops = fwd.split(",").map((h) => h.trim()).filter(Boolean);
+        const nearest = hops[hops.length - 1];
+        if (nearest) return nearest;
+    }
+
+    return event.node.req.socket?.remoteAddress || "unknown";
 }
 
 export function rateLimit(

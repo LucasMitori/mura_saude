@@ -1,10 +1,12 @@
 import { getDatabase } from "#server/utils/mongodb";
-import { getAuthUser, hashPassword, verifyPassword } from "#server/utils/auth";
+import { getAuthUser, hashPassword, verifyPassword, generateToken } from "#server/utils/auth";
 import { toObjectIdOrThrow } from "#server/utils/roles";
 import { sanitizeMongoInput, validateString } from "#server/utils/validators";
 import { validatePassword } from "#server/utils/password-rules";
 import { rateLimit } from "#server/utils/rate-limit";
+import { writeAudit } from "#server/utils/audit";
 import { resolvePermissions, normalizeRole } from "../../../shared/permissions";
+import type { ManagerSpecialty } from "../../../shared/types/auth";
 
 interface UpdateProfileBody {
     name?: string;
@@ -35,6 +37,8 @@ export default defineEventHandler(async (event) => {
     }
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
+    // Set when the password changes — drives token revocation below.
+    let newTokenVersion: number | null = null;
 
     if (typeof body.name === "string") {
         const name = validateString(body.name, "name", 80).trim();
@@ -85,6 +89,10 @@ export default defineEventHandler(async (event) => {
             });
         }
         updates.password = await hashPassword(body.newPassword);
+        // Changing the password REVOKES every token issued so far — otherwise a
+        // stolen token would keep working after the victim "secured" the account.
+        newTokenVersion = Number(user.tokenVersion || 0) + 1;
+        updates.tokenVersion = newTokenVersion;
     }
 
     if (Object.keys(updates).length === 1) {
@@ -93,17 +101,27 @@ export default defineEventHandler(async (event) => {
     }
 
     await users.updateOne({ _id: oid }, { $set: updates });
-    return await respond(oid);
+
+    // Hand the caller a token minted with the new version so the user who just
+    // changed their own password stays signed in on THIS device only.
+    let freshToken: string | undefined;
+    if (newTokenVersion !== null) {
+        const role = normalizeRole(user.role);
+        freshToken = generateToken(userId, user.email as string, role, newTokenVersion);
+        await writeAudit(event, { userId, email: user.email as string, role }, "auth.passwordChanged");
+    }
+
+    return await respond(oid, freshToken);
 });
 
-async function respond(oid: ReturnType<typeof toObjectIdOrThrow>) {
+async function respond(oid: ReturnType<typeof toObjectIdOrThrow>, token?: string) {
     const db = await getDatabase();
     const u = await db
         .collection("users")
         .findOne({ _id: oid }, { projection: { password: 0 } });
     if (!u) throw createError({ statusCode: 404, message: "User not found" });
     const role = normalizeRole(u.role);
-    const specialty = (u.specialty as "personal_trainer" | "nutritionist" | undefined) ?? null;
+    const specialty = (u.specialty as ManagerSpecialty | undefined) ?? null;
     return {
         id: u._id.toString(),
         name: u.name as string,
@@ -113,5 +131,7 @@ async function respond(oid: ReturnType<typeof toObjectIdOrThrow>) {
         permissions: resolvePermissions(role, specialty),
         avatar: (u.avatar as string | null | undefined) ?? null,
         createdAt: (u.createdAt as Date)?.toISOString?.() ?? "",
+        // Present only right after a password change (tokens were revoked).
+        ...(token ? { token } : {}),
     };
 }

@@ -1,10 +1,11 @@
 import { getDatabase } from "#server/utils/mongodb";
-import { getAuthUser } from "#server/utils/auth";
-import { getAdminUserId } from "#server/utils/roles";
+import { requirePermission, getAdminUserId } from "#server/utils/roles";
 import { safeDateQueryParam } from "#server/utils/validators";
+import { shouldHideWeight, redactWeight } from "#server/utils/privacy";
 
 export default defineEventHandler(async (event) => {
-    const auth = getAuthUser(event);
+    const ctx = await requirePermission(event, "dashboard.view");
+    const hideWeight = await shouldHideWeight(ctx);
 
     const query = getQuery(event);
     const from = safeDateQueryParam(query.from);
@@ -16,7 +17,7 @@ export default defineEventHandler(async (event) => {
     const collection = db.collection("dailyRecords");
 
     const adminId = await getAdminUserId();
-    const targetUserId = adminId || auth.userId;
+    const targetUserId = adminId || ctx.userId;
 
     const filter: Record<string, unknown> = {
         userId: targetUserId,
@@ -37,8 +38,11 @@ export default defineEventHandler(async (event) => {
         .limit(limit)
         .toArray();
 
-    return records.map((r) => ({
-        date: r.date as string,
-        bodyMeasurements: r.bodyMeasurements || [],
-    }));
+    return records.map((r) => {
+        const out = {
+            date: r.date as string,
+            bodyMeasurements: r.bodyMeasurements || [],
+        };
+        return hideWeight ? redactWeight(out) : out;
+    });
 });

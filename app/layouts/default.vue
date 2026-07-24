@@ -150,6 +150,12 @@
                     title="Dietas"
                     to="/diet"
                 />
+                <v-list-item
+                    v-if="authStore.can('exams.view')"
+                    prepend-icon="mdi-file-document-multiple"
+                    title="Exames / Resultados"
+                    to="/exams"
+                />
                 <v-list-subheader v-if="canEditAnything">
                     Gerenciar
                 </v-list-subheader>
@@ -176,6 +182,12 @@
                     prepend-icon="mdi-image-multiple"
                     title="Galeria de Fotos"
                     to="/admin/gallery"
+                />
+                <v-list-item
+                    v-if="authStore.can('users.manage')"
+                    prepend-icon="mdi-shield-search"
+                    title="Auditoria"
+                    to="/admin/audit"
                 />
                 <v-list-item
                     v-if="authStore.can('users.manage')"

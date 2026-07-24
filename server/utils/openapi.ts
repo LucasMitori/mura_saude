@@ -69,7 +69,8 @@ export function getOpenApiSpec() {
             { name: "Exercises", description: "Exercise search (wger + local)" },
             { name: "Nutrition", description: "Food search (Open Food Facts)" },
             { name: "Admin", description: "User role management" },
-            { name: "Settings", description: "App customization (login background — permanent, no TTL)" },
+            { name: "Settings", description: "App customization (login background — permanent, no TTL) + privacy" },
+            { name: "Exams", description: "Sensitive medical documents in GridFS (admin uploads; nutricionista + médico view only the documents targeted to them; never normal users)" },
             { name: "Health", description: "Service health" },
         ],
         paths: {
@@ -86,7 +87,7 @@ export function getOpenApiSpec() {
                 post: {
                     tags: ["Auth"],
                     summary: "Login",
-                    description: "Rate-limited, time-equalized against user enumeration.",
+                    description: "Rate-limited per IP **and** per account: 8 failed attempts lock the account for 15 minutes (429). Time-equalized against user enumeration. Issues a token carrying the account's current `tokenVersion`.",
                     requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["email", "password"], properties: { email: { type: "string" }, password: { type: "string" } } } } } },
                     responses: { "200": { description: "OK", content: { "application/json": { schema: { $ref: "#/components/schemas/AuthResponse" } } } }, "401": ok("Invalid credentials"), "429": ok("Rate limited") },
                 },
@@ -94,6 +95,12 @@ export function getOpenApiSpec() {
             "/api/auth/me": {
                 get: { tags: ["Auth"], summary: "Current profile (with permissions)", security: bearer, responses: { "200": { description: "OK", content: { "application/json": { schema: { $ref: "#/components/schemas/UserProfile" } } } }, "401": ok("Unauthenticated") } },
                 put: { tags: ["Auth"], summary: "Update own name / avatar / password", description: "Self-edit only. Cannot change role. Avatar max 5 MB.", security: bearer, requestBody: { content: { "application/json": { schema: { type: "object", properties: { name: { type: "string" }, avatar: { type: "string", nullable: true }, currentPassword: { type: "string" }, newPassword: { type: "string" } } } } } }, responses: { "200": { description: "Updated", content: { "application/json": { schema: { $ref: "#/components/schemas/UserProfile" } } } }, "401": ok("Wrong current password"), "413": ok("Avatar too large") } },
+            },
+            "/api/auth/logout-all": {
+                post: { tags: ["Auth"], summary: "Revoke every session of this account", description: "Bumps the user's `tokenVersion`, invalidating **all** issued tokens (including the caller's). Use after a lost device or suspected compromise.", security: bearer, responses: { "200": ok("All sessions ended"), "401": ok("Unauthenticated") } },
+            },
+            "/api/admin/audit": {
+                get: { tags: ["Admin"], summary: "Audit trail (who accessed what)", description: authPerm("users.manage") + " Read-only; entries auto-expire after 180 days (TTL). Filter with `?action=` and `?limit=`.", security: bearer, parameters: [{ name: "action", in: "query", schema: { type: "string", example: "exam.view" } }, { name: "limit", in: "query", schema: { type: "integer" } }], responses: { "200": jsonObj, "403": ok("Forbidden") } },
             },
             "/api/auth/seed-admin": {
                 post: { tags: ["Auth"], summary: "Bootstrap/repair the admin user", description: "Backdoor protected by the JWT secret in the body. Rate-limited. Use only to recover the admin account.", requestBody: { content: { "application/json": { schema: { type: "object", properties: { secret: { type: "string" } } } } } }, responses: { "200": ok("Admin created/updated"), "403": ok("Bad secret") } },
@@ -180,6 +187,19 @@ export function getOpenApiSpec() {
                 get: { tags: ["Settings"], summary: "Login background image (public)", description: "Public — the login page is pre-auth. 404 when no background is configured.", responses: { "200": { description: "Image binary", content: { "image/jpeg": {}, "image/png": {}, "image/webp": {} } }, "404": ok("No background set") } },
                 put: { tags: ["Settings"], summary: "Set/replace the login background", description: "Admin only. Body: `{ dataUrl }` (JPEG/PNG/WebP, ≤ 5 MB, magic-byte validated). Stored WITHOUT TTL — never auto-deleted.", security: bearer, requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["dataUrl"], properties: { dataUrl: { type: "string" } } } } } }, responses: { "200": ok("Saved"), "400": ok("Invalid image"), "403": ok("Forbidden"), "413": ok("Larger than 5 MB") } },
                 delete: { tags: ["Settings"], summary: "Remove the login background", description: "Admin only. Login reverts to the plain theme.", security: bearer, responses: { "200": ok("Removed"), "403": ok("Forbidden"), "404": ok("None set") } },
+            },
+            "/api/settings/privacy": {
+                get: { tags: ["Settings"], summary: "Read privacy settings", description: "Any authenticated user. Returns `{ hideWeight }`.", security: bearer, responses: { "200": jsonObj } },
+                put: { tags: ["Settings"], summary: "Toggle weight privacy", description: "Admin only. Body `{ hideWeight: boolean }`. When on, `/api/daily` and `/api/measurements` redact the patient's weight to null for plain `user` viewers (admin + managers still see it).", security: bearer, responses: { "200": ok("Saved"), "403": ok("Forbidden") } },
+            },
+            "/api/exams": {
+                get: { tags: ["Exams"], summary: "List exam documents (metadata)", description: authPerm("exams.view") + " Admin sees all; nutricionista/médico see only documents whose `audience` includes their profession. Never returns binaries.", security: bearer, responses: { "200": jsonObj, "403": ok("Forbidden") } },
+                post: { tags: ["Exams"], summary: "Upload a document", description: authPerm("exams.edit") + " Admin only. `multipart/form-data` with a `file` part + optional `title`/`category`/`examDate`/`notes` and one or more `audience` parts (`medico`, `nutritionist`) choosing who may see it (default both). Stored in GridFS; 50 MB cap.", security: bearer, requestBody: { required: true, content: { "multipart/form-data": { schema: { type: "object", properties: { file: { type: "string", format: "binary" }, title: { type: "string" }, category: { type: "string" }, examDate: { type: "string" }, notes: { type: "string" }, audience: { type: "array", items: { type: "string", enum: ["medico", "nutritionist"] } } } } } } }, responses: { "200": ok("Uploaded — returns { id, size }"), "400": ok("No file"), "403": ok("Forbidden"), "413": ok("Larger than 50 MB") } },
+            },
+            "/api/exams/{id}": {
+                get: { tags: ["Exams"], summary: "Stream/preview a document", description: authPerm("exams.view") + " A nutricionista/médico can only fetch documents targeted to them (else 404). Safe types (PDF/image/text) stream inline; everything else — and `?download=1` — is a forced attachment. Always `nosniff` + `sandbox` CSP + `no-store`.", security: bearer, parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }, { name: "download", in: "query", schema: { type: "string" }, description: "Any value forces an attachment download" }], responses: { "200": { description: "File stream" }, "403": ok("Forbidden"), "404": ok("Not found or not targeted to you") } },
+                put: { tags: ["Exams"], summary: "Edit document metadata", description: authPerm("exams.edit") + " Body: title/category/examDate/notes.", security: bearer, parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": ok("Updated"), "403": ok("Forbidden"), "404": ok("Not found") } },
+                delete: { tags: ["Exams"], summary: "Delete a document", description: authPerm("exams.edit") + " Admin only. Removes the GridFS file + chunks.", security: bearer, parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }], responses: { "200": ok("Deleted"), "403": ok("Forbidden"), "404": ok("Not found") } },
             },
             "/api/health": {
                 get: { tags: ["Health"], summary: "Service health (public)", responses: { "200": jsonObj } },

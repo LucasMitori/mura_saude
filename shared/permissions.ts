@@ -16,6 +16,8 @@ export const ALL_PERMISSIONS: Permission[] = [
     "nutrition.edit",
     "diet.view",
     "diet.edit",
+    "exams.view",
+    "exams.edit",
     "users.manage",
 ];
 
@@ -40,10 +42,20 @@ const TRAINER_PERMS: Permission[] = [
 ];
 
 // nutritionist: STRICTLY read-only on the patient's data (dashboard/reports/
-// treinos/health are view-only). Their sole write capability is the diet
-// domain — building and managing diet plans on the /diet page. They can never
-// touch meals, measurements, water, workouts, users or admin settings.
-const NUTRITIONIST_PERMS: Permission[] = [...VIEW_PERMS, "diet.edit"];
+// treinos/health are view-only). Their write capability is the diet domain
+// (building diet plans on /diet). They also VIEW the patient's medical exam
+// documents (exams.view) — relevant to nutrition decisions — but cannot
+// upload or delete them. They can never touch meals, measurements, water,
+// workouts, users or admin settings.
+const NUTRITIONIST_PERMS: Permission[] = [...VIEW_PERMS, "diet.edit", "exams.view"];
+
+// medico (doctor): PURE read-only. Sees the patient's data (dashboard/reports/
+// treinos/diet) and the medical exam documents targeted to doctors
+// (exams.view) — but edits/creates/deletes NOTHING, not even diets. The
+// difference from the nutritionist is exactly this: no diet.edit, and exam
+// documents are audience-targeted (see shared/types/exam.ts) so the admin
+// chooses whether each upload is for the médico, the nutricionista, or both.
+const MEDIC_PERMS: Permission[] = [...VIEW_PERMS, "exams.view"];
 
 export function resolvePermissions(
     role: UserRole | string | null | undefined,
@@ -55,6 +67,7 @@ export function resolvePermissions(
         case "manager":
             if (specialty === "nutritionist") return [...NUTRITIONIST_PERMS];
             if (specialty === "personal_trainer") return [...TRAINER_PERMS];
+            if (specialty === "medico") return [...MEDIC_PERMS];
             // Manager without a specialty set yet → safe view-only.
             return [...VIEW_PERMS];
         case "user":

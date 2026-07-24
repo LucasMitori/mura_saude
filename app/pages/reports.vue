@@ -469,8 +469,12 @@ const weightChartData = computed(() => {
         const ms = r.bodyMeasurements || [];
         if (ms.length > 0) {
             const morning = ms.find((m) => m.time === "morning") || ms[0]!;
-            labels.push(format(parseISO(r.date), "dd/MM"));
-            data.push(morning.data.weight.value);
+            const w = morning.data.weight.value;
+            // Skip redacted weights (privacy toggle) so the chart never breaks.
+            if (typeof w === "number") {
+                labels.push(format(parseISO(r.date), "dd/MM"));
+                data.push(w);
+            }
         }
     }
     return {

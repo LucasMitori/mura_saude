@@ -108,6 +108,52 @@
             </v-col>
         </v-row>
 
+        <!-- ===== PRIVACY ===== -->
+        <v-row class="mt-1">
+            <v-col cols="12">
+                <v-card>
+                    <v-card-title class="d-flex align-center pa-4">
+                        <v-icon start>mdi-shield-lock</v-icon>
+                        Privacidade
+                    </v-card-title>
+                    <v-divider />
+                    <v-card-text>
+                        <div class="d-flex align-center flex-wrap ga-3">
+                            <v-avatar
+                                :color="privacy.hideWeight ? 'warning' : 'grey'"
+                                variant="flat"
+                                size="44"
+                            >
+                                <v-icon color="white">
+                                    {{ privacy.hideWeight ? "mdi-eye-off" : "mdi-eye" }}
+                                </v-icon>
+                            </v-avatar>
+                            <div class="flex-grow-1" style="min-width: 220px">
+                                <p class="text-body-1 font-weight-medium mb-0">
+                                    Ocultar meu peso dos usuários comuns
+                                </p>
+                                <p class="text-caption text-medium-emphasis mb-0">
+                                    Como em apps de banco: quando ativado, usuários comuns
+                                    veem <strong>"—"</strong> no lugar do peso em todo o app
+                                    (dashboard, relatórios, medições e gráficos). Você (admin)
+                                    e profissionais (nutricionista / personal) continuam vendo
+                                    normalmente.
+                                </p>
+                            </div>
+                            <v-switch
+                                v-model="privacy.hideWeight"
+                                color="warning"
+                                inset
+                                hide-details
+                                :loading="privacyLoading"
+                                @update:model-value="savePrivacy"
+                            />
+                        </div>
+                    </v-card-text>
+                </v-card>
+            </v-col>
+        </v-row>
+
         <v-snackbar
             v-model="snackbar.show"
             :color="snackbar.color"
@@ -140,6 +186,39 @@ const removing = ref(false);
 const snackbar = ref({ show: false, message: "", color: "success" });
 function notify(message: string, color: "success" | "error" = "success") {
     snackbar.value = { show: true, message, color };
+}
+
+// ===== Privacy =====
+const privacy = ref({ hideWeight: false });
+const privacyLoading = ref(false);
+
+async function loadPrivacy() {
+    try {
+        privacy.value = await $fetch<{ hideWeight: boolean }>("/api/settings/privacy", {
+            headers: authStore.authHeaders,
+        });
+    } catch {
+        privacy.value = { hideWeight: false };
+    }
+}
+
+async function savePrivacy(value: boolean | null) {
+    privacyLoading.value = true;
+    try {
+        await $fetch("/api/settings/privacy", {
+            method: "PUT",
+            body: { hideWeight: value === true },
+            headers: authStore.authHeaders,
+        });
+        notify(value ? "Peso agora está oculto para usuários comuns" : "Peso visível novamente");
+    } catch (e: unknown) {
+        const err = e as { data?: { message?: string }; message?: string };
+        notify(err?.data?.message || err?.message || "Erro ao salvar", "error");
+        // Revert the toggle on failure.
+        privacy.value.hideWeight = value !== true;
+    } finally {
+        privacyLoading.value = false;
+    }
 }
 
 async function onFilePicked(value: File | File[] | null) {
@@ -247,7 +326,10 @@ async function remove() {
     }
 }
 
-onMounted(loadCurrent);
+onMounted(() => {
+    loadCurrent();
+    loadPrivacy();
+});
 </script>
 
 <style scoped>

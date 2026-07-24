@@ -13,6 +13,8 @@ const CSP = [
     "frame-ancestors 'none'",
     "form-action 'self'",
     "img-src 'self' data: blob: https:",
+    // Exam PDF previews render a client-side blob: URL inside an <iframe>.
+    "frame-src 'self' blob:",
     "font-src 'self' data:",
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
     "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
